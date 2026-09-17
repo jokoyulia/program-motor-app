@@ -22,18 +22,19 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Fix Project Structure and Build
+      - name: Build APK with Internet Permission
         run: |
           PROJ_DIR=$(find . -maxdepth 3 -name "pubspec.yaml" -exec dirname {} \;)
           cd $PROJ_DIR
           
-          # Hapus folder android lama yang bermasalah dari FlutLab
-          rm -rf android
-          
-          # Re-generate folder android dengan template Flutter terbaru
+          # Re-generate android project jika belum ada
           flutter create . --platforms=android
           
-          # Unduh dependency dan kompilasi APK
+          # Injeksi Izin Internet langsung ke AndroidManifest.xml sebelum dibuild
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' $MANIFEST_FILE
+          
+          # Build APK
           flutter pub get
           flutter build apk --release
 
