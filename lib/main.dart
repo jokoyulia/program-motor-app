@@ -124,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login Sales')),
+      appBar: AppBar(title: const Text('Login Lucky Indo Motor')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
