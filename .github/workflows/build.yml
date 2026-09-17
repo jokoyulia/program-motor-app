@@ -22,19 +22,25 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Build APK with Internet Permission
+      - name: Build Clean Flutter App
         run: |
+          # Cari folder tempat lib dan pubspec.yaml berada
           PROJ_DIR=$(find . -maxdepth 3 -name "pubspec.yaml" -exec dirname {} \;)
-          cd $PROJ_DIR
           
-          # Re-generate android project jika belum ada
-          flutter create . --platforms=android
+          # Buat project Flutter baru yang segar & kompatibel penuh
+          flutter create my_app --platforms=android
           
-          # Injeksi Izin Internet langsung ke AndroidManifest.xml sebelum dibuild
+          # Salin kode Dart & pubspec milik Anda ke project baru
+          cp -r $PROJ_DIR/lib my_app/
+          cp $PROJ_DIR/pubspec.yaml my_app/
+          
+          cd my_app
+          
+          # Injeksi Izin Internet ke AndroidManifest.xml
           MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
           sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' $MANIFEST_FILE
           
-          # Build APK
+          # Unduh dependency dan Build APK
           flutter pub get
           flutter build apk --release
 
