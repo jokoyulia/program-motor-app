@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 // Target API Anda
-const String baseUrl = "https://desktop-5oa4fls.tail5c9674.ts.net/api";
+const String baseUrl = "https://entangled-framing-reflex.ngrok-free.dev/api";
 
 void main() {
   runApp(const MaterialApp(
