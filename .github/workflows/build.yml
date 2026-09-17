@@ -10,12 +10,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      - run: flutter pub get
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+
+      - name: Fix Project Structure and Build
+        run: |
+          PROJ_DIR=$(find . -maxdepth 3 -name "pubspec.yaml" -exec dirname {} \;)
+          cd $PROJ_DIR
+          
+          # Hapus folder android lama yang bermasalah dari FlutLab
+          rm -rf android
+          
+          # Re-generate folder android dengan template Flutter terbaru
+          flutter create . --platforms=android
+          
+          # Unduh dependency dan kompilasi APK
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: '**/build/app/outputs/flutter-apk/app-release.apk'
