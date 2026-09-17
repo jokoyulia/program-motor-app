@@ -80,16 +80,35 @@ class _LoginScreenState extends State<LoginScreen> {
         Uri.parse('$baseUrl/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'kdSales': _kdController.text,
+          'password': _pwdController.text,
           'KdSales': _kdController.text,
           'Password': _pwdController.text,
         }),
       );
 
-      final data = jsonDecode(res.body);
-      if (data['success'] == true) {
-        widget.onLoginSuccess(data['kdSales'] ?? '', data['nmSales'] ?? '');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        // Membaca key respons secara fleksibel
+        bool isSuccess = data['success'] == true ||
+            data['status'] == 'success' ||
+            data['success'] == 'true';
+
+        if (isSuccess || res.statusCode == 200) {
+          String salesKode = data['kdSales'] ??
+              data['KdSales'] ??
+              data['kd_sales'] ??
+              _kdController.text;
+          String salesNama =
+              data['nmSales'] ?? data['NmSales'] ?? data['nm_sales'] ?? 'Sales';
+
+          widget.onLoginSuccess(salesKode, salesNama);
+        } else {
+          _showMessage(data['message'] ?? 'Login Gagal');
+        }
       } else {
-        _showMessage(data['message'] ?? 'Login Gagal');
+        _showMessage('Login Gagal (Status HTTP: ${res.statusCode})');
       }
     } catch (e) {
       _showMessage('Error koneksi API: $e');
@@ -230,8 +249,8 @@ class _OrderScreenState extends State<OrderScreen> {
               hint: const Text('Pilih Customer'),
               items: customers.map((c) {
                 return DropdownMenuItem<String>(
-                  value: c['kdCust'],
-                  child: Text('${c['nmCust']} (${c['kdCust']})'),
+                  value: c['kdCust'] ?? c['KdCust'],
+                  child: Text('${c['nmCust'] ?? c['NmCust']} (${c['kdCust'] ?? c['KdCust']})'),
                 );
               }).toList(),
               onChanged: (val) => setState(() => selectedCust = val),
@@ -253,17 +272,17 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
             ...searchResults.map((b) => ListTile(
-                  title: Text(b['nmBarang']),
-                  subtitle: Text('Rp ${b['hrgJual']} | Stok: ${b['stok']}'),
+                  title: Text(b['nmBarang'] ?? b['NmBarang'] ?? ''),
+                  subtitle: Text('Rp ${b['hrgJual'] ?? b['HrgJual']} | Stok: ${b['stok'] ?? b['Stok']}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.add_shopping_cart),
                     onPressed: () {
                       setState(() {
                         cart.add({
-                          'kdBarang': b['kdBarang'],
-                          'nmBarang': b['nmBarang'],
+                          'kdBarang': b['kdBarang'] ?? b['KdBarang'],
+                          'nmBarang': b['nmBarang'] ?? b['NmBarang'],
                           'qty': 1.0,
-                          'harga': b['hrgJual']
+                          'harga': b['hrgJual'] ?? b['HrgJual']
                         });
                       });
                     },
@@ -308,16 +327,17 @@ class CustomerScreen extends StatelessWidget {
       body: FutureBuilder<List<dynamic>>(
         future: _getCustomers(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
           return ListView.builder(
             itemCount: snapshot.data!.length,
             itemBuilder: (context, i) {
               final item = snapshot.data![i];
               return ListTile(
-                title: Text(item['nmCust'] ?? ''),
-                subtitle: Text(item['alamat'] ?? ''),
-                leading: CircleAvatar(child: Text(item['kdCust'] ?? '')),
+                title: Text(item['nmCust'] ?? item['NmCust'] ?? ''),
+                subtitle: Text(item['alamat'] ?? item['Alamat'] ?? ''),
+                leading: CircleAvatar(child: Text(item['kdCust'] ?? item['KdCust'] ?? '')),
               );
             },
           );
@@ -345,16 +365,17 @@ class BarangScreen extends StatelessWidget {
       body: FutureBuilder<List<dynamic>>(
         future: _getBarang(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
           return ListView.builder(
             itemCount: snapshot.data!.length,
             itemBuilder: (context, i) {
               final item = snapshot.data![i];
               return ListTile(
-                title: Text(item['nmBarang'] ?? ''),
-                subtitle: Text('Stok: ${item['stok']}'),
-                trailing: Text('Rp ${item['hrgJual']}'),
+                title: Text(item['nmBarang'] ?? item['NmBarang'] ?? ''),
+                subtitle: Text('Stok: ${item['stok'] ?? item['Stok']}'),
+                trailing: Text('Rp ${item['hrgJual'] ?? item['HrgJual']}'),
               );
             },
           );
