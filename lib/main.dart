@@ -1002,7 +1002,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                               subtitle: Text(
                                   'Status: $status | Total: Rp ${total.toStringAsFixed(0)}',
                                   style: TextStyle(
-                                      color: isBaru ? Colors.green.shade800 : Colors.black800,
+                                      color: isBaru ? Colors.green.shade800 : Colors.black,
                                       fontWeight: FontWeight.w600)),
                               children: [
                                 const Divider(height: 1),
