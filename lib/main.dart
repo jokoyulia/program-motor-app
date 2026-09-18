@@ -253,7 +253,7 @@ class OrderScreen extends StatefulWidget {
 }
 
 class _OrderScreenState extends State<OrderScreen> {
-  String noOrder = '';
+  String noOrder = 'Loading...';
   List<dynamic> customers = [];
   String? selectedCust;
   List<Map<String, dynamic>> cart = [];
@@ -266,18 +266,32 @@ class _OrderScreenState extends State<OrderScreen> {
   @override
   void initState() {
     super.initState();
-    _generateNoOrder();
+    _fetchNextNoOrder();
     _loadCustomers();
   }
 
-  void _generateNoOrder() {
+  // Mengambil NoOrder sekuesial otomatis dari API backend (Format: ORYYMMNNNN)
+  Future<void> _fetchNextNoOrder() async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/next-no-order'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          noOrder = data['noOrder'] ?? data['NoOrder'] ?? _fallbackNoOrder();
+        });
+      } else {
+        setState(() => noOrder = _fallbackNoOrder());
+      }
+    } catch (e) {
+      setState(() => noOrder = _fallbackNoOrder());
+    }
+  }
+
+  String _fallbackNoOrder() {
     final now = DateTime.now();
     String yy = now.year.toString().substring(2);
     String mm = now.month.toString().padLeft(2, '0');
-    String randomNum = (1000 + (now.millisecond % 9000)).toString();
-    setState(() {
-      noOrder = 'OR$yy$mm$randomNum';
-    });
+    return 'OR$yy${mm}0001';
   }
 
   Future<void> _loadCustomers() async {
@@ -300,9 +314,7 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() => searchResults = jsonDecode(res.body));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal cari barang: $e')),
-      );
+      _showMsg('Gagal cari barang: $e');
     } finally {
       setState(() => _isSearching = false);
     }
@@ -311,23 +323,36 @@ class _OrderScreenState extends State<OrderScreen> {
   void _addBarangToCartDialog(Map<String, dynamic> barang) {
     final qtyController = TextEditingController(text: '1');
     double harga = double.tryParse((barang['hrgJual'] ?? barang['HrgJual'] ?? 0).toString()) ?? 0;
+    double stokMaster = double.tryParse((barang['stok'] ?? barang['Stok'] ?? 0).toString()) ?? 0;
+    String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
+    String nmBg = barang['nmBarang'] ?? barang['NmBarang'] ?? '';
+
+    // Hitung stok yang sudah ada di keranjang lokal
+    double existingInCartQty = 0;
+    int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
+    if (existingIdx >= 0) {
+      existingInCartQty = cart[existingIdx]['qty'];
+    }
+    double stokTersedia = stokMaster - existingInCartQty;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(barang['nmBarang'] ?? barang['NmBarang'] ?? 'Tambah Barang'),
+        title: Text(nmBg),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Harga: Rp ${harga.toStringAsFixed(0)}'),
+            Text('Harga: Rp ${harga.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('Stok Efektif Tersedia: ${stokTersedia.toStringAsFixed(0)}', 
+                style: TextStyle(color: stokTersedia > 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             TextField(
               controller: qtyController,
               keyboardType: TextInputType.number,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: 'Jumlah (Qty)',
+                labelText: 'Jumlah Order (Qty)',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -344,35 +369,65 @@ class _OrderScreenState extends State<OrderScreen> {
               foregroundColor: Colors.white,
             ),
             onPressed: () {
-              double qty = double.tryParse(qtyController.text) ?? 1;
-              if (qty <= 0) qty = 1;
+              double qtyInput = double.tryParse(qtyController.text) ?? 0;
+              if (qtyInput <= 0) {
+                _showMsg('Jumlah Qty tidak valid');
+                return;
+              }
 
-              String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
-              String nmBg = barang['nmBarang'] ?? barang['NmBarang'] ?? '';
+              if (qtyInput > stokTersedia) {
+                _showDialogWarning('Stok Tidak Mencukupi!', 
+                    'Stok yang tersedia hanya ${stokTersedia.toStringAsFixed(0)}. Anda menginput ${qtyInput.toStringAsFixed(0)}.');
+                return;
+              }
 
               setState(() {
-                int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
                 if (existingIdx >= 0) {
-                  cart[existingIdx]['qty'] += qty;
+                  cart[existingIdx]['qty'] += qtyInput;
                   cart[existingIdx]['subtotal'] = cart[existingIdx]['qty'] * harga;
                 } else {
                   cart.add({
                     'kdBarang': kdBg,
                     'nmBarang': nmBg,
                     'harga': harga,
-                    'qty': qty,
-                    'subtotal': qty * harga,
+                    'qty': qtyInput,
+                    'subtotal': qtyInput * harga,
+                    'stokMaster': stokMaster,
                   });
                 }
+
+                // POIN 1: BERSIHKAN DAFTAR PENCARIAN SETELAH ITEM DIPILIH
+                searchResults.clear();
+                _searchBarangController.clear();
               });
 
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('$nmBg ditambahkan ke keranjang')),
-              );
+              _showMsg('$nmBg ($qtyInput) ditambahkan ke keranjang');
             },
             child: const Text('Tambah'),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showDialogWarning(String title, String msg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            const SizedBox(width: 8),
+            Text(title),
+          ],
+        ),
+        content: Text(msg),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          )
         ],
       ),
     );
@@ -385,12 +440,21 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   void _updateCartQty(int index, double delta) {
+    double currentQty = cart[index]['qty'];
+    double newQty = currentQty + delta;
+    double stokMaster = cart[index]['stokMaster'] ?? 9999;
+
+    if (newQty > stokMaster) {
+      _showDialogWarning('Stok Terbatas', 'Jumlah order melebihi stok master (${stokMaster.toStringAsFixed(0)})');
+      return;
+    }
+
     setState(() {
-      cart[index]['qty'] += delta;
-      if (cart[index]['qty'] <= 0) {
+      if (newQty <= 0) {
         cart.removeAt(index);
       } else {
-        cart[index]['subtotal'] = cart[index]['qty'] * cart[index]['harga'];
+        cart[index]['qty'] = newQty;
+        cart[index]['subtotal'] = newQty * cart[index]['harga'];
       }
     });
   }
@@ -400,7 +464,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> _simpanOrder() async {
-    if (selectedCust == null) {
+    if (selectedCust == null || selectedCust!.isEmpty) {
       _showMsg('Pilih Customer terlebih dahulu!');
       return;
     }
@@ -411,11 +475,12 @@ class _OrderScreenState extends State<OrderScreen> {
 
     setState(() => _isSaving = true);
 
+    // POIN 3: MEMASTIKAN KODE CUSTOMER DISIMPAN DENGAN BENAR (KdCust)
     final payload = {
       "NoOrder": noOrder,
       "TglOrder": DateTime.now().toIso8601String(),
       "Sales": widget.kdSales,
-      "KdCust": selectedCust,
+      "KdCust": selectedCust, 
       "Total": _totalHarga,
       "Status": "BARU",
       "Items": cart.map((item) => {
@@ -436,17 +501,20 @@ class _OrderScreenState extends State<OrderScreen> {
       );
 
       final resData = jsonDecode(res.body);
+      
       if (res.statusCode == 200 && (resData['success'] == true || resData['status'] == 'success')) {
-        _showMsg('Order Berhasil Disimpan! No: $noOrder');
+        _showMsg('Order $noOrder Berhasil Disimpan!');
         setState(() {
           cart.clear();
           selectedCust = null;
           searchResults.clear();
           _searchBarangController.clear();
         });
-        _generateNoOrder();
+        // POIN 2: Minta NoOrder terbaru untuk order selanjutnya
+        _fetchNextNoOrder();
       } else {
-        _showMsg('Gagal simpan: ${resData['message'] ?? 'Error Server'}');
+        // POIN 4: MENAMPILKAN WARNING JIKA STOK DI SERVER TIDAK CUKUP
+        _showDialogWarning('Gagal Simpan Order', resData['message'] ?? 'Stok tidak mencukupi atau terjadi kesalahan.');
       }
     } catch (e) {
       _showMsg('Error koneksi simpan order: $e');
@@ -571,14 +639,23 @@ class _OrderScreenState extends State<OrderScreen> {
                         ),
                       ],
                     ),
+                    // Hasil pencarian barang
                     if (searchResults.isNotEmpty) ...[
                       const Divider(height: 20),
-                      const Text('Hasil Pencarian (Klik barang untuk tambah):',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey)),
-                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('PILIH BARANG (Klik item):',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue)),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => setState(() => searchResults.clear()),
+                          )
+                        ],
+                      ),
                       ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -592,7 +669,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold)),
                             subtitle: Text(
-                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok: ${b['stok'] ?? b['Stok']}'),
+                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok Master: ${b['stok'] ?? b['Stok']}'),
                             trailing: Text('Rp ${hrg.toStringAsFixed(0)}',
                                 style: const TextStyle(
                                     color: Color(0xFF1E3A8A),
@@ -608,7 +685,7 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Item Order / Keranjang Section
+            // Item Order / Keranjang Section (POIN 5: Menampilkan Harga, Qty, Subtotal & Estimasi Total)
             Card(
               elevation: 3,
               child: Padding(
@@ -619,20 +696,20 @@ class _OrderScreenState extends State<OrderScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Daftar Barang Order:',
+                        const Text('Daftar Item Order:',
                             style: TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('${cart.length} Item',
+                        Text('${cart.length} Jenis Item',
                             style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
                     const Divider(),
                     cart.isEmpty
                         ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
+                            padding: EdgeInsets.symmetric(vertical: 24),
                             child: Center(
                               child: Text(
-                                'Belum ada barang diorder.\nGunakan pencarian barang di atas.',
+                                'Keranjang masih kosong.\nKetik & cari nama barang di atas.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Colors.grey),
                               ),
@@ -656,7 +733,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.bold)),
                                         Text(
-                                            'Rp ${item['harga'].toStringAsFixed(0)} x ${item['qty']}'),
+                                            'Harga: Rp ${item['harga'].toStringAsFixed(0)} x ${item['qty'].toStringAsFixed(0)}'),
                                         Text(
                                             'Subtotal: Rp ${item['subtotal'].toStringAsFixed(0)}',
                                             style: const TextStyle(
@@ -673,7 +750,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                             color: Colors.red),
                                         onPressed: () => _updateCartQty(i, -1),
                                       ),
-                                      Text('${item['qty']}',
+                                      Text('${item['qty'].toStringAsFixed(0)}',
                                           style: const TextStyle(
                                               fontWeight: FontWeight.bold)),
                                       IconButton(
@@ -694,21 +771,30 @@ class _OrderScreenState extends State<OrderScreen> {
                             },
                           ),
                     const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('TOTAL ORDER:',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold)),
-                        Text(
-                          'Rp ${_totalHarga.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A8A),
+                    // ESTIMASI TOTAL ORDER LIVE
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blueGrey.shade100),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('ESTIMASI TOTAL:',
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Rp ${_totalHarga.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A8A),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _isSaving
