@@ -5,6 +5,12 @@ import 'package:share_plus/share_plus.dart';
 
 const String baseUrl = "https://entangled-framing-reflex.ngrok-free.dev/api";
 
+// Header standar untuk bypass peringatan browser ngrok
+const Map<String, String> ngrokHeaders = {
+  'Content-Type': 'application/json',
+  'ngrok-skip-browser-warning': 'true',
+};
+
 void main() {
   runApp(const MyApp());
 }
@@ -126,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final res = await http.post(
         Uri.parse('$baseUrl/login'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ngrokHeaders,
         body: jsonEncode({
           'kdSales': _kdController.text,
           'password': _pwdController.text,
@@ -334,7 +340,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _fetchNextNoOrder() async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl/next-no-order'));
+      final res = await http.get(
+        Uri.parse('$baseUrl/next-no-order'),
+        headers: ngrokHeaders,
+      );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
@@ -357,7 +366,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _loadCustomers() async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl/customer'));
+      final res = await http.get(
+        Uri.parse('$baseUrl/customer'),
+        headers: ngrokHeaders,
+      );
       if (res.statusCode == 200) {
         setState(() => customers = jsonDecode(res.body));
       }
@@ -370,7 +382,10 @@ class _OrderScreenState extends State<OrderScreen> {
     if (q.trim().isEmpty) return;
     setState(() => _isSearching = true);
     try {
-      final res = await http.get(Uri.parse('$baseUrl/barang?cari=$q'));
+      final res = await http.get(
+        Uri.parse('$baseUrl/barang?cari=$q'),
+        headers: ngrokHeaders,
+      );
       if (res.statusCode == 200) {
         setState(() => searchResults = jsonDecode(res.body));
       }
@@ -560,7 +575,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final res = await http.post(
         Uri.parse('$baseUrl/order'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ngrokHeaders,
         body: jsonEncode(payload),
       );
 
@@ -887,7 +902,10 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
   Future<void> _fetchOrders([String search = '']) async {
     setState(() => isLoading = true);
     try {
-      final res = await http.get(Uri.parse('$baseUrl/orders-list?cari=$search'));
+      final res = await http.get(
+        Uri.parse('$baseUrl/orders-list?cari=$search'),
+        headers: ngrokHeaders,
+      );
       if (res.statusCode == 200) {
         setState(() => orders = jsonDecode(res.body));
       }
@@ -1097,7 +1115,10 @@ class BarangScreen extends StatelessWidget {
   const BarangScreen({super.key});
 
   Future<List<dynamic>> _getBarang() async {
-    final res = await http.get(Uri.parse('$baseUrl/barang?cari='));
+    final res = await http.get(
+      Uri.parse('$baseUrl/barang?cari='),
+      headers: ngrokHeaders,
+    );
     return jsonDecode(res.body);
   }
 
