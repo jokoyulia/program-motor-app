@@ -64,6 +64,38 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  void _logout() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi Logout'),
+        content: const Text('Apakah Anda yakin ingin keluar dari akun sales?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                loggedKdSales = null;
+                loggedNmSales = null;
+                orderToEdit = null;
+                _currentIndex = 0;
+              });
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loggedKdSales == null) {
@@ -81,26 +113,38 @@ class _MainNavigationState extends State<MainNavigation> {
         nmSales: loggedNmSales!,
         editOrderData: orderToEdit,
         onEditComplete: () => setState(() => orderToEdit = null),
+        onLogout: _logout,
       ),
-      DataOrderScreen(onEditOrder: _navigateToEditOrder),
-      const BarangScreen(),
+      DataOrderScreen(
+        onEditOrder: _navigateToEditOrder,
+        onLogout: _logout,
+      ),
+      BarangScreen(onLogout: _logout),
     ];
 
-    return Scaffold(
-      body: pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: const Color(0xFF0A192F),
-        unselectedItemColor: Colors.grey,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart), label: 'Input Order'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long), label: 'Data Order'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.inventory), label: 'Data Barang'),
-        ],
+    // PopScope cegah keluar aplikasi secara tidak sengaja saat tekan tombol Back HP
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _logout();
+      },
+      child: Scaffold(
+        body: pages[_currentIndex],
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          selectedItemColor: const Color(0xFF0A192F),
+          unselectedItemColor: Colors.grey,
+          onTap: (i) => setState(() => _currentIndex = i),
+          items: const [
+            BottomNavigationBarItem(
+                icon: Icon(Icons.shopping_cart), label: 'Input Order'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.receipt_long), label: 'Data Order'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.inventory), label: 'Data Barang'),
+          ],
+        ),
       ),
     );
   }
@@ -270,6 +314,7 @@ class OrderScreen extends StatefulWidget {
   final String nmSales;
   final Map<String, dynamic>? editOrderData;
   final VoidCallback onEditComplete;
+  final VoidCallback onLogout;
 
   const OrderScreen({
     super.key,
@@ -277,6 +322,7 @@ class OrderScreen extends StatefulWidget {
     required this.nmSales,
     this.editOrderData,
     required this.onEditComplete,
+    required this.onLogout,
   });
 
   @override
@@ -285,14 +331,22 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   String noOrder = 'Loading...';
-  List<dynamic> customers = [];
-  String? selectedCust;
-  List<Map<String, dynamic>> cart = [];
-  bool isEditMode = false;
+  
+  // Pencarian Customer
+  final _searchCustController = TextEditingController();
+  List<dynamic> allCustomers = [];
+  List<dynamic> custSearchResults = [];
+  String? selectedKdCust;
+  String? selectedNmCust;
+  bool _isSearchingCust = false;
 
+  // Pencarian Barang
   final _searchBarangController = TextEditingController();
   List<dynamic> searchResults = [];
   bool _isSearching = false;
+  
+  List<Map<String, dynamic>> cart = [];
+  bool isEditMode = false;
   bool _isSaving = false;
 
   @override
@@ -319,7 +373,8 @@ class _OrderScreenState extends State<OrderScreen> {
     setState(() {
       isEditMode = true;
       noOrder = data['noOrder'] ?? data['NoOrder'] ?? '';
-      selectedCust = data['kdCust'] ?? data['KdCust'];
+      selectedKdCust = data['kdCust'] ?? data['KdCust'];
+      selectedNmCust = data['nmCust'] ?? data['NmCust'] ?? selectedKdCust;
 
       cart.clear();
       List<dynamic> items = data['items'] ?? data['Items'] ?? [];
@@ -371,11 +426,30 @@ class _OrderScreenState extends State<OrderScreen> {
         headers: ngrokHeaders,
       );
       if (res.statusCode == 200) {
-        setState(() => customers = jsonDecode(res.body));
+        setState(() => allCustomers = jsonDecode(res.body));
       }
     } catch (e) {
       // Handle error
     }
+  }
+
+  void _searchCustomer(String q) {
+    if (q.trim().isEmpty) {
+      setState(() => custSearchResults.clear());
+      return;
+    }
+    setState(() => _isSearchingCust = true);
+    String query = q.toLowerCase();
+    final results = allCustomers.where((c) {
+      String kd = (c['kdCust'] ?? c['KdCust'] ?? '').toString().toLowerCase();
+      String nm = (c['nmCust'] ?? c['NmCust'] ?? '').toString().toLowerCase();
+      return kd.contains(query) || nm.contains(query);
+    }).toList();
+
+    setState(() {
+      custSearchResults = results;
+      _isSearchingCust = false;
+    });
   }
 
   Future<void> _searchBarang(String q) async {
@@ -534,7 +608,10 @@ class _OrderScreenState extends State<OrderScreen> {
     setState(() {
       isEditMode = false;
       cart.clear();
-      selectedCust = null;
+      selectedKdCust = null;
+      selectedNmCust = null;
+      _searchCustController.clear();
+      custSearchResults.clear();
       searchResults.clear();
       _searchBarangController.clear();
     });
@@ -543,8 +620,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> _simpanOrder() async {
-    if (selectedCust == null || selectedCust!.isEmpty) {
-      _showMsg('Pilih Customer terlebih dahulu!');
+    if (selectedKdCust == null || selectedKdCust!.isEmpty) {
+      _showMsg('Cari & pilih Customer terlebih dahulu!');
       return;
     }
     if (cart.isEmpty) {
@@ -558,7 +635,7 @@ class _OrderScreenState extends State<OrderScreen> {
       "NoOrder": noOrder,
       "TglOrder": DateTime.now().toIso8601String(),
       "Sales": widget.kdSales,
-      "KdCust": selectedCust,
+      "KdCust": selectedKdCust,
       "Total": _totalHarga,
       "Status": "BARU",
       "IsEdit": isEditMode,
@@ -616,7 +693,12 @@ class _OrderScreenState extends State<OrderScreen> {
               icon: const Icon(Icons.cancel),
               tooltip: 'Batal Edit',
               onPressed: _resetForm,
-            )
+            ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: widget.onLogout,
+          )
         ],
       ),
       body: SingleChildScrollView(
@@ -624,12 +706,13 @@ class _OrderScreenState extends State<OrderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Info NoOrder & Customer
+            // Header Info NoOrder & Cari Customer
             Card(
               elevation: 3,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -649,23 +732,113 @@ class _OrderScreenState extends State<OrderScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: selectedCust,
-                      decoration: const InputDecoration(
-                        labelText: 'Pilih Customer',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+
+                    // Tampilan Customer Terpilih
+                    if (selectedKdCust != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person, color: Color(0xFF1E3A8A)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Customer Terpilih:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                  Text('$selectedNmCust ($selectedKdCust)',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.change_circle, color: Colors.orange),
+                              tooltip: 'Ganti Customer',
+                              onPressed: () => setState(() {
+                                selectedKdCust = null;
+                                selectedNmCust = null;
+                              }),
+                            )
+                          ],
+                        ),
                       ),
-                      items: customers.map((c) {
-                        String kd = c['kdCust'] ?? c['KdCust'] ?? '';
-                        String nm = c['nmCust'] ?? c['NmCust'] ?? '';
-                        return DropdownMenuItem<String>(
-                          value: kd,
-                          child: Text('$nm ($kd)'),
-                        );
-                      }).toList(),
-                      onChanged: (val) => setState(() => selectedCust = val),
-                    ),
+                    ] else ...[
+                      // Input Cari Customer
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchCustController,
+                              decoration: const InputDecoration(
+                                hintText: 'Cari Nama / Kode Customer...',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.person_search),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                              onChanged: _searchCustomer,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0A192F),
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => _searchCustomer(_searchCustController.text),
+                            child: _isSearchingCust
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Cari'),
+                          ),
+                        ],
+                      ),
+                      if (custSearchResults.isNotEmpty) ...[
+                        const Divider(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('PILIH CUSTOMER (Klik item):',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () => setState(() => custSearchResults.clear()),
+                            )
+                          ],
+                        ),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: custSearchResults.length,
+                          itemBuilder: (context, i) {
+                            final c = custSearchResults[i];
+                            String kd = c['kdCust'] ?? c['KdCust'] ?? '';
+                            String nm = c['nmCust'] ?? c['NmCust'] ?? '';
+                            String alm = c['alamat'] ?? c['Alamat'] ?? '';
+                            return ListTile(
+                              dense: true,
+                              title: Text('$nm ($kd)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: Text(alm.isNotEmpty ? alm : 'Tanpa Alamat'),
+                              trailing: const Icon(Icons.check_circle_outline, color: Colors.green),
+                              onTap: () {
+                                setState(() {
+                                  selectedKdCust = kd;
+                                  selectedNmCust = nm;
+                                  custSearchResults.clear();
+                                  _searchCustController.clear();
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ]
+                    ]
                   ],
                 ),
               ),
@@ -688,6 +861,7 @@ class _OrderScreenState extends State<OrderScreen> {
                             decoration: const InputDecoration(
                               hintText: 'Cari Nama / Kode Barang...',
                               border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.search),
                               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             ),
                             onSubmitted: _searchBarang,
@@ -878,11 +1052,17 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 // ==========================================
-// 3. SCREEN DAFTAR ORDER & DETAIL (REPLIES CUSTOMER)
+// 3. SCREEN DAFTAR ORDER & DETAIL
 // ==========================================
 class DataOrderScreen extends StatefulWidget {
   final Function(Map<String, dynamic>) onEditOrder;
-  const DataOrderScreen({super.key, required this.onEditOrder});
+  final VoidCallback onLogout;
+
+  const DataOrderScreen({
+    super.key,
+    required this.onEditOrder,
+    required this.onLogout,
+  });
 
   @override
   State<DataOrderScreen> createState() => _DataOrderScreenState();
@@ -965,7 +1145,12 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _fetchOrders(_searchController.text),
-          )
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: widget.onLogout,
+          ),
         ],
       ),
       body: Column(
@@ -1044,7 +1229,6 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                         itemCount: items.length,
                                         itemBuilder: (ctx, idx) {
                                           final item = items[idx];
-                                          double hrg = double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
                                           double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
                                           double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
 
@@ -1070,7 +1254,6 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.end,
                                         children: [
-                                          // Tombol Share
                                           OutlinedButton.icon(
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor: const Color(0xFF1E3A8A),
@@ -1080,7 +1263,6 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                             label: const Text('Share Nota'),
                                           ),
                                           const SizedBox(width: 8),
-                                          // Tombol Edit (Hanya jika status "BARU")
                                           if (isBaru)
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
@@ -1112,7 +1294,8 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 // 4. SCREEN LIST BARANG
 // ==========================================
 class BarangScreen extends StatelessWidget {
-  const BarangScreen({super.key});
+  final VoidCallback onLogout;
+  const BarangScreen({super.key, required this.onLogout});
 
   Future<List<dynamic>> _getBarang() async {
     final res = await http.get(
@@ -1125,7 +1308,16 @@ class BarangScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Data Barang')),
+      appBar: AppBar(
+        title: const Text('Data Barang'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: onLogout,
+          ),
+        ],
+      ),
       body: FutureBuilder<List<dynamic>>(
         future: _getBarang(),
         builder: (context, snapshot) {
