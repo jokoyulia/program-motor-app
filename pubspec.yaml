@@ -11,7 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  share_plus: ^10.0.0  # <--- TAMBAHKAN BARIS INI
+  share_plus: ^10.0.0
+  pdf: ^3.10.8        # <-- Pastikan ini ada
+  printing: ^5.13.1   # <-- Pastikan ini ada
   
 dev_dependencies:
   flutter_test:
