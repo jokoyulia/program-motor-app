@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 const String baseUrl = "https://entangled-framing-reflex.ngrok-free.dev/api";
 
-// Header standar untuk bypass peringatan browser ngrok
 const Map<String, String> ngrokHeaders = {
   'Content-Type': 'application/json',
   'ngrok-skip-browser-warning': 'true',
@@ -54,13 +56,12 @@ class _MainNavigationState extends State<MainNavigation> {
   String? loggedKdSales;
   String? loggedNmSales;
 
-  // Data untuk passing jika melakukan edit order
   Map<String, dynamic>? orderToEdit;
 
   void _navigateToEditOrder(Map<String, dynamic> orderData) {
     setState(() {
       orderToEdit = orderData;
-      _currentIndex = 0; // Pindah ke tab Input Order
+      _currentIndex = 0;
     });
   }
 
@@ -116,13 +117,14 @@ class _MainNavigationState extends State<MainNavigation> {
         onLogout: _logout,
       ),
       DataOrderScreen(
+        kdSales: loggedKdSales!,
+        nmSales: loggedNmSales!,
         onEditOrder: _navigateToEditOrder,
         onLogout: _logout,
       ),
       BarangScreen(onLogout: _logout),
     ];
 
-    // PopScope cegah keluar aplikasi secara tidak sengaja saat tekan tombol Back HP
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -332,7 +334,6 @@ class OrderScreen extends StatefulWidget {
 class _OrderScreenState extends State<OrderScreen> {
   String noOrder = 'Loading...';
   
-  // Pencarian Customer
   final _searchCustController = TextEditingController();
   List<dynamic> allCustomers = [];
   List<dynamic> custSearchResults = [];
@@ -340,7 +341,6 @@ class _OrderScreenState extends State<OrderScreen> {
   String? selectedNmCust;
   bool _isSearchingCust = false;
 
-  // Pencarian Barang
   final _searchBarangController = TextEditingController();
   List<dynamic> searchResults = [];
   bool _isSearching = false;
@@ -706,7 +706,6 @@ class _OrderScreenState extends State<OrderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Info NoOrder & Cari Customer
             Card(
               elevation: 3,
               child: Padding(
@@ -733,7 +732,6 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Tampilan Customer Terpilih
                     if (selectedKdCust != null) ...[
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -768,7 +766,6 @@ class _OrderScreenState extends State<OrderScreen> {
                         ),
                       ),
                     ] else ...[
-                      // Input Cari Customer
                       Row(
                         children: [
                           Expanded(
@@ -845,7 +842,6 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Cari Barang Section
             Card(
               elevation: 3,
               child: Padding(
@@ -923,7 +919,6 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Item Order / Keranjang Section
             Card(
               elevation: 3,
               child: Padding(
@@ -1052,14 +1047,18 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 // ==========================================
-// 3. SCREEN DAFTAR ORDER & DETAIL
+// 3. SCREEN DAFTAR ORDER (FILTER SALES & BULAN)
 // ==========================================
 class DataOrderScreen extends StatefulWidget {
+  final String kdSales;
+  final String nmSales;
   final Function(Map<String, dynamic>) onEditOrder;
   final VoidCallback onLogout;
 
   const DataOrderScreen({
     super.key,
+    required this.kdSales,
+    required this.nmSales,
     required this.onEditOrder,
     required this.onLogout,
   });
@@ -1073,19 +1072,31 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
   List<dynamic> orders = [];
   bool isLoading = false;
 
+  late String selectedBulan;
+  final List<String> listBulan = [];
+
   @override
   void initState() {
     super.initState();
+    _generateMonthList();
     _fetchOrders();
+  }
+
+  void _generateMonthList() {
+    DateTime now = DateTime.now();
+    for (int i = 0; i < 12; i++) {
+      DateTime d = DateTime(now.year, now.month - i, 1);
+      String monthStr = "${d.year}-${d.month.toString().padLeft(2, '0')}";
+      listBulan.add(monthStr);
+    }
+    selectedBulan = listBulan.first;
   }
 
   Future<void> _fetchOrders([String search = '']) async {
     setState(() => isLoading = true);
     try {
-      final res = await http.get(
-        Uri.parse('$baseUrl/orders-list?cari=$search'),
-        headers: ngrokHeaders,
-      );
+      final url = '$baseUrl/orders-list?sales=${widget.kdSales}&bulan=$selectedBulan&cari=$search';
+      final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
       if (res.statusCode == 200) {
         setState(() => orders = jsonDecode(res.body));
       }
@@ -1140,7 +1151,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Data Order Transaksi'),
+        title: Text('Order Sales: ${widget.nmSales}'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -1155,12 +1166,42 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
       ),
       body: Column(
         children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.white,
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
+                const SizedBox(width: 8),
+                const Text('Pilih Bulan: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: selectedBulan,
+                    decoration: const InputDecoration(
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: listBulan.map((b) {
+                      return DropdownMenuItem(value: b, child: Text(b));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => selectedBulan = val);
+                        _fetchOrders(_searchController.text);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Cari No Order / Customer / Sales...',
+                hintText: 'Cari No Order / Customer...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear),
@@ -1179,7 +1220,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : orders.isEmpty
-                    ? const Center(child: Text('Belum ada data order.'))
+                    ? const Center(child: Text('Tidak ada data order pada bulan ini.'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: orders.length,
@@ -1291,60 +1332,297 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN LIST BARANG
+// 4. SCREEN BARANG (SEARCH, MULTIPLE SELECT & PDF CETAK)
 // ==========================================
-class BarangScreen extends StatelessWidget {
+class BarangScreen extends StatefulWidget {
   final VoidCallback onLogout;
   const BarangScreen({super.key, required this.onLogout});
 
-  Future<List<dynamic>> _getBarang() async {
-    final res = await http.get(
-      Uri.parse('$baseUrl/barang?cari='),
-      headers: ngrokHeaders,
+  @override
+  State<BarangScreen> createState() => _BarangScreenState();
+}
+
+class _BarangScreenState extends State<BarangScreen> {
+  final _searchController = TextEditingController();
+  List<dynamic> allBarang = [];
+  bool isLoading = false;
+
+  // Set untuk menyimpan KodeBarang yang dicentang
+  final Set<String> selectedKdBarang = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBarang('');
+  }
+
+  Future<void> _fetchBarang(String q) async {
+    setState(() => isLoading = true);
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/barang?cari=$q'),
+        headers: ngrokHeaders,
+      );
+      if (res.statusCode == 200) {
+        setState(() => allBarang = jsonDecode(res.body));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memuat barang: $e')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _toggleSelectAll(bool? val) {
+    setState(() {
+      if (val == true) {
+        for (var b in allBarang) {
+          selectedKdBarang.add(b['kdBarang'] ?? b['KdBarang'] ?? '');
+        }
+      } else {
+        selectedKdBarang.clear();
+      }
+    });
+  }
+
+  // CETAK PDF TERPISAH PER KELOMPOK BARANG
+  Future<void> _generatePdf() async {
+    if (selectedKdBarang.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih / Centang barang terlebih dahulu!')),
+      );
+      return;
+    }
+
+    // Filter barang yang dicentang
+    List<dynamic> selectedItems = allBarang.where((b) {
+      String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
+      return selectedKdBarang.contains(kdBg);
+    }).toList();
+
+    // Kelompokkan barang berdasarkan NmKelompokBrg
+    Map<String, List<dynamic>> grouped = {};
+    for (var b in selectedItems) {
+      String kel = b['nmKelompokBrg'] ?? b['NmKelompokBrg'] ?? 'LAIN-LAIN';
+      if (!grouped.containsKey(kel)) {
+        grouped[kel] = [];
+      }
+      grouped[kel]!.add(b);
+    }
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (pw.Context context) {
+          List<pw.Widget> widgets = [];
+
+          // Header Laporan
+          widgets.add(
+            pw.Center(
+              child: pw.Column(
+                children: [
+                  pw.Text('LUCKY INDO MOTOR',
+                      style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('KATALOG DAFTAR BARANG SPAREPART',
+                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 16),
+                ],
+              ),
+            ),
+          );
+
+          // Loop per kelompok barang
+          grouped.forEach((kelompokName, items) {
+            widgets.add(
+              pw.Container(
+                margin: const pw.EdgeInsets.only(top: 12, bottom: 6),
+                padding: const pw.EdgeInsets.all(6),
+                color: PdfColors.grey300,
+                child: pw.Text('KELOMPOK BARANG: ${kelompokName.toUpperCase()}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+              ),
+            );
+
+            // Buat Tabel
+            widgets.add(
+              pw.Table.fromTextArray(
+                headers: ['Kode Barang', 'Nama Barang', 'Stok', 'Harga Jual'],
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF0A192F)),
+                cellHeight: 22,
+                cellAlignments: {
+                  0: pw.Alignment.centerLeft,
+                  1: pw.Alignment.centerLeft,
+                  2: pw.Alignment.centerRight,
+                  3: pw.Alignment.centerRight,
+                },
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(80),
+                  1: const pw.FlexColumnWidth(2),
+                  2: const pw.FixedColumnWidth(50),
+                  3: const pw.FixedColumnWidth(90),
+                },
+                data: items.map((b) {
+                  String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
+                  String nmBg = b['nmBarang'] ?? b['NmBarang'] ?? '';
+                  double stok = double.tryParse((b['stok'] ?? b['Stok'] ?? 0).toString()) ?? 0;
+                  double hrg = double.tryParse((b['hrgJual'] ?? b['HrgJual'] ?? 0).toString()) ?? 0;
+
+                  return [
+                    kdBg,
+                    nmBg,
+                    stok.toStringAsFixed(0),
+                    'Rp ${hrg.toStringAsFixed(0)}',
+                  ];
+                }).toList(),
+              ),
+            );
+          });
+
+          return widgets;
+        },
+      ),
     );
-    return jsonDecode(res.body);
+
+    // Tampilkan Pratinjau / Print PDF
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    bool isAllSelected = allBarang.isNotEmpty && selectedKdBarang.length == allBarang.length;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Data Barang'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Cetak PDF',
+            onPressed: _generatePdf,
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
-            onPressed: onLogout,
+            onPressed: widget.onLogout,
           ),
         ],
       ),
-      body: FutureBuilder<List<dynamic>>(
-        future: _getBarang(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, i) {
-              final item = snapshot.data![i];
-              double hrg = double.tryParse((item['hrgJual'] ?? item['HrgJual'] ?? 0).toString()) ?? 0;
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.build, color: Color(0xFF0A192F)),
-                  title: Text(item['nmBarang'] ?? item['NmBarang'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('Stok: ${item['stok'] ?? item['Stok']}'),
-                  trailing: Text(
-                    'Rp ${hrg.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
+      body: Column(
+        children: [
+          // Pencarian Barang
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Cari Nama / Kode Barang...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _fetchBarang('');
+                        },
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    onSubmitted: (val) => _fetchBarang(val),
                   ),
                 ),
-              );
-            },
-          );
-        },
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0A192F),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _fetchBarang(_searchController.text),
+                  child: const Text('Cari'),
+                )
+              ],
+            ),
+          ),
+
+          // Header Centang Semua & Info Terpilih
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            color: Colors.white,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Checkbox(
+                      value: isAllSelected,
+                      onChanged: _toggleSelectAll,
+                    ),
+                    const Text('Pilih / Centang Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Text('${selectedKdBarang.length} Terpilih',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // List Barang
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : allBarang.isEmpty
+                    ? const Center(child: Text('Barang tidak ditemukan.'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: allBarang.length,
+                        itemBuilder: (context, i) {
+                          final item = allBarang[i];
+                          String kdBg = item['kdBarang'] ?? item['KdBarang'] ?? '';
+                          String nmBg = item['nmBarang'] ?? item['NmBarang'] ?? '';
+                          String kelBg = item['nmKelompokBrg'] ?? item['NmKelompokBrg'] ?? 'LAIN-LAIN';
+                          double hrg = double.tryParse((item['hrgJual'] ?? item['HrgJual'] ?? 0).toString()) ?? 0;
+                          double stok = double.tryParse((item['stok'] ?? item['Stok'] ?? 0).toString()) ?? 0;
+
+                          bool isChecked = selectedKdBarang.contains(kdBg);
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: CheckboxListTile(
+                              value: isChecked,
+                              activeColor: const Color(0xFF0A192F),
+                              onChanged: (bool? val) {
+                                setState(() {
+                                  if (val == true) {
+                                    selectedKdBarang.add(kdBg);
+                                  } else {
+                                    selectedKdBarang.remove(kdBg);
+                                  }
+                                });
+                              },
+                              title: Text(nmBg, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: Text('Kode: $kdBg | Kelompok: $kelBg | Stok: ${stok.toStringAsFixed(0)}'),
+                              secondary: Text(
+                                'Rp ${hrg.toStringAsFixed(0)}',
+                                style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }
