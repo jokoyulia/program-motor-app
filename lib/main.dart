@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
+
+// Import PDF dengan penulisan huruf kecil yang benar
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -333,7 +335,7 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   String noOrder = 'Loading...';
-  
+
   final _searchCustController = TextEditingController();
   List<dynamic> allCustomers = [];
   List<dynamic> custSearchResults = [];
@@ -344,7 +346,7 @@ class _OrderScreenState extends State<OrderScreen> {
   final _searchBarangController = TextEditingController();
   List<dynamic> searchResults = [];
   bool _isSearching = false;
-  
+
   List<Map<String, dynamic>> cart = [];
   bool isEditMode = false;
   bool _isSaving = false;
@@ -1347,7 +1349,6 @@ class _BarangScreenState extends State<BarangScreen> {
   List<dynamic> allBarang = [];
   bool isLoading = false;
 
-  // Set untuk menyimpan KodeBarang yang dicentang
   final Set<String> selectedKdBarang = {};
 
   @override
@@ -1387,7 +1388,6 @@ class _BarangScreenState extends State<BarangScreen> {
     });
   }
 
-  // CETAK PDF TERPISAH PER KELOMPOK BARANG
   Future<void> _generatePdf() async {
     if (selectedKdBarang.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1396,13 +1396,11 @@ class _BarangScreenState extends State<BarangScreen> {
       return;
     }
 
-    // Filter barang yang dicentang
     List<dynamic> selectedItems = allBarang.where((b) {
       String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
       return selectedKdBarang.contains(kdBg);
     }).toList();
 
-    // Kelompokkan barang berdasarkan NmKelompokBrg
     Map<String, List<dynamic>> grouped = {};
     for (var b in selectedItems) {
       String kel = b['nmKelompokBrg'] ?? b['NmKelompokBrg'] ?? 'LAIN-LAIN';
@@ -1421,7 +1419,6 @@ class _BarangScreenState extends State<BarangScreen> {
         build: (pw.Context context) {
           List<pw.Widget> widgets = [];
 
-          // Header Laporan
           widgets.add(
             pw.Center(
               child: pw.Column(
@@ -1436,7 +1433,6 @@ class _BarangScreenState extends State<BarangScreen> {
             ),
           );
 
-          // Loop per kelompok barang
           grouped.forEach((kelompokName, items) {
             widgets.add(
               pw.Container(
@@ -1448,9 +1444,9 @@ class _BarangScreenState extends State<BarangScreen> {
               ),
             );
 
-            // Buat Tabel
             widgets.add(
-              pw.Table.fromTextArray(
+              pw.TableHelper.fromTextArray(
+                context: context,
                 headers: ['Kode Barang', 'Nama Barang', 'Stok', 'Harga Jual'],
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                 headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF0A192F)),
@@ -1489,7 +1485,6 @@ class _BarangScreenState extends State<BarangScreen> {
       ),
     );
 
-    // Tampilkan Pratinjau / Print PDF
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
       name: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
@@ -1518,7 +1513,6 @@ class _BarangScreenState extends State<BarangScreen> {
       ),
       body: Column(
         children: [
-          // Pencarian Barang
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -1554,8 +1548,6 @@ class _BarangScreenState extends State<BarangScreen> {
               ],
             ),
           ),
-
-          // Header Centang Semua & Info Terpilih
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             color: Colors.white,
@@ -1577,8 +1569,6 @@ class _BarangScreenState extends State<BarangScreen> {
             ),
           ),
           const Divider(height: 1),
-
-          // List Barang
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
