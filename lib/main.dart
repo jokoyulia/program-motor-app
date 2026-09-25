@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
-import 'package:intl/intl.dart';
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -16,12 +15,12 @@ const Map<String, String> ngrokHeaders = {
   'ngrok-skip-browser-warning': 'true',
 };
 
-// Formatter angka ribuan standar Indonesia (tanpa desimal & tanpa simbol Rp)
-final NumberFormat _numFormat = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0);
-
+// Fungsi pemformat ribuan tanpa library eksternal (mengubah 1000000 -> 1.000.000)
 String formatRibuan(dynamic value) {
   num val = num.tryParse(value.toString()) ?? 0;
-  return _numFormat.format(val).trim();
+  String str = val.toInt().toString();
+  RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+  return str.replaceAllMapped(reg, (Match m) => '${m[1]}.');
 }
 
 void main() {
