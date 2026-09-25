@@ -1,9 +1,9 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 
-// Import PDF dengan penulisan huruf kecil yang benar
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -497,6 +497,12 @@ class _OrderScreenState extends State<OrderScreen> {
             Text('Harga: Rp ${harga.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
             Text('Stok Efektif Tersedia: ${stokTersedia.toStringAsFixed(0)}',
                 style: TextStyle(color: stokTersedia > 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+            if (stokTersedia <= 0)
+              const Padding(
+                padding: EdgeInsets.only(top: 4.0),
+                child: Text('* Stok Kosong (Tetap bisa diorder & akan ditandai *)',
+                    style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
             const SizedBox(height: 12),
             TextField(
               controller: qtyController,
@@ -526,12 +532,6 @@ class _OrderScreenState extends State<OrderScreen> {
                 return;
               }
 
-              if (qtyInput > stokTersedia && !isEditMode) {
-                _showDialogWarning('Stok Tidak Mencukupi!',
-                    'Stok yang tersedia hanya ${stokTersedia.toStringAsFixed(0)}. Anda menginput ${qtyInput.toStringAsFixed(0)}.');
-                return;
-              }
-
               setState(() {
                 if (existingIdx >= 0) {
                   cart[existingIdx]['qty'] += qtyInput;
@@ -555,28 +555,6 @@ class _OrderScreenState extends State<OrderScreen> {
             },
             child: const Text('Tambah'),
           ),
-        ],
-      ),
-    );
-  }
-
-  void _showDialogWarning(String title, String msg) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            const SizedBox(width: 8),
-            Text(title),
-          ],
-        ),
-        content: Text(msg),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          )
         ],
       ),
     );
@@ -664,7 +642,7 @@ class _OrderScreenState extends State<OrderScreen> {
         _showMsg(isEditMode ? 'Order $noOrder Berhasil Diperbarui!' : 'Order $noOrder Berhasil Disimpan!');
         _resetForm();
       } else {
-        _showDialogWarning('Gagal Simpan Order', resData['message'] ?? 'Terjadi kesalahan pada server.');
+        _showMsg(resData['message'] ?? 'Gagal menyimpan order.');
       }
     } catch (e) {
       _showMsg('Error koneksi simpan order: $e');
@@ -902,12 +880,19 @@ class _OrderScreenState extends State<OrderScreen> {
                         itemBuilder: (context, i) {
                           final b = searchResults[i];
                           double hrg = double.tryParse((b['hrgJual'] ?? b['HrgJual'] ?? 0).toString()) ?? 0;
+                          double stok = double.tryParse((b['stok'] ?? b['Stok'] ?? 0).toString()) ?? 0;
+                          bool isKosong = stok <= 0;
+
                           return ListTile(
                             dense: true,
-                            title: Text(b['nmBarang'] ?? b['NmBarang'] ?? '',
-                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                            title: Text(
+                              b['nmBarang'] ?? b['NmBarang'] ?? '',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isKosong ? Colors.orange.shade900 : Colors.black),
+                            ),
                             subtitle: Text(
-                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok Master: ${b['stok'] ?? b['Stok']}'),
+                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok: ${stok.toStringAsFixed(0)} ${isKosong ? "(*STOK KOSONG)" : ""}'),
                             trailing: Text('Rp ${hrg.toStringAsFixed(0)}',
                                 style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
                             onTap: () => _addBarangToCartDialog(b),
@@ -955,17 +940,25 @@ class _OrderScreenState extends State<OrderScreen> {
                             separatorBuilder: (ctx, i) => const Divider(),
                             itemBuilder: (ctx, i) {
                               final item = cart[i];
+                              double stokM = item['stokMaster'] ?? 0;
+                              bool isKosong = stokM <= 0;
+
                               return Row(
                                 children: [
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(item['nmBarang'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        Text(
+                                          '${isKosong ? "* " : ""}${item['nmBarang']}',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: isKosong ? Colors.red.shade800 : Colors.black),
+                                        ),
                                         Text(
                                             'Harga: Rp ${item['harga'].toStringAsFixed(0)} x ${item['qty'].toStringAsFixed(0)}'),
                                         Text(
-                                            'Subtotal: Rp ${item['subtotal'].toStringAsFixed(0)}',
+                                            'Subtotal: Rp ${item['subtotal'].toStringAsFixed(0)} ${isKosong ? "(*Stok Kosong)" : ""}',
                                             style: const TextStyle(
                                                 color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
                                       ],
@@ -1049,7 +1042,7 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 // ==========================================
-// 3. SCREEN DAFTAR ORDER (FILTER SALES & BULAN)
+// 3. SCREEN DAFTAR ORDER (SHARE DENGAN TANDA *)
 // ==========================================
 class DataOrderScreen extends StatefulWidget {
   final String kdSales;
@@ -1131,18 +1124,28 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     sb.writeln('---------------------------');
     sb.writeln('DETAIL BARANG:');
 
+    bool adaKosong = false;
     for (var item in items) {
       String nm = item['nmBarang'] ?? item['NmBarang'] ?? '';
       double hrg = double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
       double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
       double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
+      int fKosong = int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
 
-      sb.writeln('- $nm');
+      if (fKosong == 1) {
+        adaKosong = true;
+        sb.writeln('- * $nm (STOK KOSONG)');
+      } else {
+        sb.writeln('- $nm');
+      }
       sb.writeln('  Rp ${hrg.toStringAsFixed(0)} x ${qty.toStringAsFixed(0)} = Rp ${sub.toStringAsFixed(0)}');
     }
 
     sb.writeln('---------------------------');
     sb.writeln('TOTAL : Rp ${total.toStringAsFixed(0)}');
+    if (adaKosong) {
+      sb.writeln('* Catatan: Item bertanda (*) adalah barang stok kosong (dapat dipesan ulang).');
+    }
     sb.writeln('===========================');
     sb.writeln('Terima kasih atas order Anda!');
 
@@ -1274,6 +1277,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                           final item = items[idx];
                                           double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
                                           double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
+                                          int fKosong = int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
 
                                           return Padding(
                                             padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1282,8 +1286,11 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                               children: [
                                                 Expanded(
                                                   child: Text(
-                                                    '${item['nmBarang'] ?? item['NmBarang']} (${qty.toStringAsFixed(0)}x)',
-                                                    style: const TextStyle(fontSize: 12),
+                                                    '${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${qty.toStringAsFixed(0)}x)',
+                                                    style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: fKosong == 1 ? Colors.orange.shade900 : Colors.black,
+                                                        fontWeight: fKosong == 1 ? FontWeight.bold : FontWeight.normal),
                                                   ),
                                                 ),
                                                 Text('Rp ${sub.toStringAsFixed(0)}',
@@ -1334,7 +1341,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN BARANG (SEARCH, MULTIPLE SELECT & PDF CETAK)
+// 4. SCREEN BARANG (COMPUTE BACKGROUND PDF + SHARE PDF DIRECTLY)
 // ==========================================
 class BarangScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -1348,6 +1355,7 @@ class _BarangScreenState extends State<BarangScreen> {
   final _searchController = TextEditingController();
   List<dynamic> allBarang = [];
   bool isLoading = false;
+  bool isPdfBuilding = false;
 
   final Set<String> selectedKdBarang = {};
 
@@ -1388,19 +1396,8 @@ class _BarangScreenState extends State<BarangScreen> {
     });
   }
 
-  Future<void> _generatePdf() async {
-    if (selectedKdBarang.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih / Centang barang terlebih dahulu!')),
-      );
-      return;
-    }
-
-    List<dynamic> selectedItems = allBarang.where((b) {
-      String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
-      return selectedKdBarang.contains(kdBg);
-    }).toList();
-
+  // FUNGSI MEMBUAT BYTES PDF DI ISOLATE / BACKGROUND THREAD (ISOLATED DARI UI THREAD)
+  static Future<Uint8List> _buildPdfIsolate(List<dynamic> selectedItems) async {
     Map<String, List<dynamic>> grouped = {};
     for (var b in selectedItems) {
       String kel = b['nmKelompokBrg'] ?? b['NmKelompokBrg'] ?? 'LAIN-LAIN';
@@ -1450,7 +1447,7 @@ class _BarangScreenState extends State<BarangScreen> {
                 headers: ['Kode Barang', 'Nama Barang', 'Stok', 'Harga Jual'],
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                 headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF0A192F)),
-                cellHeight: 22,
+                cellHeight: 20,
                 cellAlignments: {
                   0: pw.Alignment.centerLeft,
                   1: pw.Alignment.centerLeft,
@@ -1485,10 +1482,40 @@ class _BarangScreenState extends State<BarangScreen> {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
-    );
+    return pdf.save();
+  }
+
+  Future<void> _generatePdfAndShare() async {
+    if (selectedKdBarang.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih / Centang barang terlebih dahulu!')),
+      );
+      return;
+    }
+
+    setState(() => isPdfBuilding = true);
+
+    try {
+      List<dynamic> selectedItems = allBarang.where((b) {
+        String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
+        return selectedKdBarang.contains(kdBg);
+      }).toList();
+
+      // Gunakan compute() agar eksekusi ribuan data berjalan di Isolate terpisah tanpa freeze UI
+      Uint8List pdfBytes = await compute(_buildPdfIsolate, selectedItems);
+
+      // Share PDF langsung atau cetak / simpan
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal membuat PDF Katalog: $e')),
+      );
+    } finally {
+      setState(() => isPdfBuilding = false);
+    }
   }
 
   @override
@@ -1500,9 +1527,14 @@ class _BarangScreenState extends State<BarangScreen> {
         title: const Text('Data Barang'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Cetak PDF',
-            onPressed: _generatePdf,
+            icon: isPdfBuilding
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Icon(Icons.picture_as_pdf),
+            tooltip: 'Export & Share PDF',
+            onPressed: isPdfBuilding ? null : _generatePdfAndShare,
           ),
           IconButton(
             icon: const Icon(Icons.logout),
