@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -14,6 +15,14 @@ const Map<String, String> ngrokHeaders = {
   'Content-Type': 'application/json',
   'ngrok-skip-browser-warning': 'true',
 };
+
+// Formatter angka ribuan standar Indonesia (tanpa desimal & tanpa simbol Rp)
+final NumberFormat _numFormat = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0);
+
+String formatRibuan(dynamic value) {
+  num val = num.tryParse(value.toString()) ?? 0;
+  return _numFormat.format(val).trim();
+}
 
 void main() {
   runApp(const MyApp());
@@ -494,8 +503,8 @@ class _OrderScreenState extends State<OrderScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Harga: Rp ${harga.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text('Stok Efektif Tersedia: ${stokTersedia.toStringAsFixed(0)}',
+            Text('Harga: Rp ${formatRibuan(harga)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('Stok Efektif Tersedia: ${formatRibuan(stokTersedia)}',
                 style: TextStyle(color: stokTersedia > 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
             if (stokTersedia <= 0)
               const Padding(
@@ -551,7 +560,7 @@ class _OrderScreenState extends State<OrderScreen> {
               });
 
               Navigator.pop(ctx);
-              _showMsg('$nmBg ($qtyInput) ditambahkan ke keranjang');
+              _showMsg('$nmBg (${formatRibuan(qtyInput)}) ditambahkan ke keranjang');
             },
             child: const Text('Tambah'),
           ),
@@ -892,8 +901,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                   color: isKosong ? Colors.orange.shade900 : Colors.black),
                             ),
                             subtitle: Text(
-                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok: ${stok.toStringAsFixed(0)} ${isKosong ? "(*STOK KOSONG)" : ""}'),
-                            trailing: Text('Rp ${hrg.toStringAsFixed(0)}',
+                                'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok: ${formatRibuan(stok)} ${isKosong ? "(*STOK KOSONG)" : ""}'),
+                            trailing: Text('Rp ${formatRibuan(hrg)}',
                                 style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
                             onTap: () => _addBarangToCartDialog(b),
                           );
@@ -918,7 +927,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       children: [
                         const Text('Daftar Item Order:',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('${cart.length} Jenis Item', style: const TextStyle(color: Colors.grey)),
+                        Text('${formatRibuan(cart.length)} Jenis Item', style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
                     const Divider(),
@@ -956,9 +965,9 @@ class _OrderScreenState extends State<OrderScreen> {
                                               color: isKosong ? Colors.red.shade800 : Colors.black),
                                         ),
                                         Text(
-                                            'Harga: Rp ${item['harga'].toStringAsFixed(0)} x ${item['qty'].toStringAsFixed(0)}'),
+                                            'Harga: Rp ${formatRibuan(item['harga'])} x ${formatRibuan(item['qty'])}'),
                                         Text(
-                                            'Subtotal: Rp ${item['subtotal'].toStringAsFixed(0)} ${isKosong ? "(*Stok Kosong)" : ""}',
+                                            'Subtotal: Rp ${formatRibuan(item['subtotal'])} ${isKosong ? "(*Stok Kosong)" : ""}',
                                             style: const TextStyle(
                                                 color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
                                       ],
@@ -970,7 +979,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                         icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
                                         onPressed: () => _updateCartQty(i, -1),
                                       ),
-                                      Text('${item['qty'].toStringAsFixed(0)}',
+                                      Text(formatRibuan(item['qty']),
                                           style: const TextStyle(fontWeight: FontWeight.bold)),
                                       IconButton(
                                         icon: const Icon(Icons.add_circle_outline, color: Colors.green),
@@ -1000,7 +1009,7 @@ class _OrderScreenState extends State<OrderScreen> {
                           const Text('ESTIMASI TOTAL:',
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           Text(
-                            'Rp ${_totalHarga.toStringAsFixed(0)}',
+                            'Rp ${formatRibuan(_totalHarga)}',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -1138,11 +1147,11 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
       } else {
         sb.writeln('- $nm');
       }
-      sb.writeln('  Rp ${hrg.toStringAsFixed(0)} x ${qty.toStringAsFixed(0)} = Rp ${sub.toStringAsFixed(0)}');
+      sb.writeln('  Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
     }
 
     sb.writeln('---------------------------');
-    sb.writeln('TOTAL : Rp ${total.toStringAsFixed(0)}');
+    sb.writeln('TOTAL : Rp ${formatRibuan(total)}');
     if (adaKosong) {
       sb.writeln('* Catatan: Item bertanda (*) adalah barang stok kosong (dapat dipesan ulang).');
     }
@@ -1249,7 +1258,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                               ),
                               title: Text('$no - $cust', style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(
-                                  'Status: $status | Total: Rp ${total.toStringAsFixed(0)}',
+                                  'Status: $status | Total: Rp ${formatRibuan(total)}',
                                   style: TextStyle(
                                       color: isBaru ? Colors.green.shade800 : Colors.black,
                                       fontWeight: FontWeight.w600)),
@@ -1286,14 +1295,14 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                               children: [
                                                 Expanded(
                                                   child: Text(
-                                                    '${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${qty.toStringAsFixed(0)}x)',
+                                                    '${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${formatRibuan(qty)}x)',
                                                     style: TextStyle(
                                                         fontSize: 12,
                                                         color: fKosong == 1 ? Colors.orange.shade900 : Colors.black,
                                                         fontWeight: fKosong == 1 ? FontWeight.bold : FontWeight.normal),
                                                   ),
                                                 ),
-                                                Text('Rp ${sub.toStringAsFixed(0)}',
+                                                Text('Rp ${formatRibuan(sub)}',
                                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                                               ],
                                             ),
@@ -1396,7 +1405,6 @@ class _BarangScreenState extends State<BarangScreen> {
     });
   }
 
-  // FUNGSI MEMBUAT BYTES PDF DI ISOLATE / BACKGROUND THREAD (ISOLATED DARI UI THREAD)
   static Future<Uint8List> _buildPdfIsolate(List<dynamic> selectedItems) async {
     Map<String, List<dynamic>> grouped = {};
     for (var b in selectedItems) {
@@ -1469,8 +1477,8 @@ class _BarangScreenState extends State<BarangScreen> {
                   return [
                     kdBg,
                     nmBg,
-                    stok.toStringAsFixed(0),
-                    'Rp ${hrg.toStringAsFixed(0)}',
+                    formatRibuan(stok),
+                    'Rp ${formatRibuan(hrg)}',
                   ];
                 }).toList(),
               ),
@@ -1501,10 +1509,8 @@ class _BarangScreenState extends State<BarangScreen> {
         return selectedKdBarang.contains(kdBg);
       }).toList();
 
-      // Gunakan compute() agar eksekusi ribuan data berjalan di Isolate terpisah tanpa freeze UI
       Uint8List pdfBytes = await compute(_buildPdfIsolate, selectedItems);
 
-      // Share PDF langsung atau cetak / simpan
       await Printing.sharePdf(
         bytes: pdfBytes,
         filename: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
@@ -1595,7 +1601,7 @@ class _BarangScreenState extends State<BarangScreen> {
                     const Text('Pilih / Centang Semua', style: TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
-                Text('${selectedKdBarang.length} Terpilih',
+                Text('${formatRibuan(selectedKdBarang.length)} Terpilih',
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
               ],
             ),
@@ -1634,9 +1640,9 @@ class _BarangScreenState extends State<BarangScreen> {
                                 });
                               },
                               title: Text(nmBg, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Kode: $kdBg | Kelompok: $kelBg | Stok: ${stok.toStringAsFixed(0)}'),
+                              subtitle: Text('Kode: $kdBg | Kelompok: $kelBg | Stok: ${formatRibuan(stok)}'),
                               secondary: Text(
-                                'Rp ${hrg.toStringAsFixed(0)}',
+                                'Rp ${formatRibuan(hrg)}',
                                 style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
                               ),
                             ),
