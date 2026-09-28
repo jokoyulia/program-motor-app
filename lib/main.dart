@@ -15,7 +15,7 @@ const Map<String, String> ngrokHeaders = {
   'ngrok-skip-browser-warning': 'true',
 };
 
-// Fungsi pemformat ribuan tanpa library eksternal (mengubah 1000000 -> 1.000.000)
+// Fungsi pemformat ribuan tanpa library eksternal
 String formatRibuan(dynamic value) {
   num val = num.tryParse(value.toString()) ?? 0;
   String str = val.toInt().toString();
@@ -319,7 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // ==========================================
-// 2. SCREEN INPUT & SIMPAN/EDIT ORDER
+// 2. SCREEN INPUT & SIMPAN/EDIT ORDER (MAKS 33 ITEM & NO URUT)
 // ==========================================
 class OrderScreen extends StatefulWidget {
   final String kdSales;
@@ -481,14 +481,21 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   void _addBarangToCartDialog(Map<String, dynamic> barang) {
+    String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
+    int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
+
+    // BATAS MAKSIMAL 33 BARIS
+    if (cart.length >= 33 && existingIdx < 0) {
+      _showMsg('Gagal! 1 Nota Order dibatasi maksimal 33 item / baris.');
+      return;
+    }
+
     final qtyController = TextEditingController(text: '1');
     double harga = double.tryParse((barang['hrgJual'] ?? barang['HrgJual'] ?? 0).toString()) ?? 0;
     double stokMaster = double.tryParse((barang['stok'] ?? barang['Stok'] ?? 0).toString()) ?? 0;
-    String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
     String nmBg = barang['nmBarang'] ?? barang['NmBarang'] ?? '';
 
     double existingInCartQty = 0;
-    int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
     if (existingIdx >= 0) {
       existingInCartQty = cart[existingIdx]['qty'];
     }
@@ -614,6 +621,10 @@ class _OrderScreenState extends State<OrderScreen> {
     }
     if (cart.isEmpty) {
       _showMsg('Keranjang order masih kosong!');
+      return;
+    }
+    if (cart.length > 33) {
+      _showMsg('Order melebihi batas maksimal 33 item!');
       return;
     }
 
@@ -926,7 +937,21 @@ class _OrderScreenState extends State<OrderScreen> {
                       children: [
                         const Text('Daftar Item Order:',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('${formatRibuan(cart.length)} Jenis Item', style: const TextStyle(color: Colors.grey)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cart.length >= 33 ? Colors.red.shade100 : Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: cart.length >= 33 ? Colors.red : Colors.blue.shade300),
+                          ),
+                          child: Text(
+                            '${cart.length} / 33 Baris',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: cart.length >= 33 ? Colors.red.shade900 : const Color(0xFF1E3A8A)),
+                          ),
+                        ),
                       ],
                     ),
                     const Divider(),
@@ -950,9 +975,29 @@ class _OrderScreenState extends State<OrderScreen> {
                               final item = cart[i];
                               double stokM = item['stokMaster'] ?? 0;
                               bool isKosong = stokM <= 0;
+                              int noUrut = i + 1; // NOMOR URUT ITEM
 
                               return Row(
                                 children: [
+                                  // BADGE NOMOR URUT
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0A192F),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '$noUrut',
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12),
+                                      ),
+                                    ),
+                                  ),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1050,7 +1095,7 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 // ==========================================
-// 3. SCREEN DAFTAR ORDER (SHARE DENGAN TANDA *)
+// 3. SCREEN DAFTAR ORDER
 // ==========================================
 class DataOrderScreen extends StatefulWidget {
   final String kdSales;
@@ -1133,20 +1178,23 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     sb.writeln('DETAIL BARANG:');
 
     bool adaKosong = false;
-    for (var item in items) {
+    for (int idx = 0; idx < items.length; idx++) {
+      var item = items[idx];
       String nm = item['nmBarang'] ?? item['NmBarang'] ?? '';
       double hrg = double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
       double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
       double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
       int fKosong = int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
 
+      int noUrut = idx + 1;
+
       if (fKosong == 1) {
         adaKosong = true;
-        sb.writeln('- * $nm (STOK KOSONG)');
+        sb.writeln('$noUrut. * $nm (STOK KOSONG)');
       } else {
-        sb.writeln('- $nm');
+        sb.writeln('$noUrut. $nm');
       }
-      sb.writeln('  Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
+      sb.writeln('   Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
     }
 
     sb.writeln('---------------------------');
@@ -1294,7 +1342,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                               children: [
                                                 Expanded(
                                                   child: Text(
-                                                    '${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${formatRibuan(qty)}x)',
+                                                    '${idx + 1}. ${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${formatRibuan(qty)}x)',
                                                     style: TextStyle(
                                                         fontSize: 12,
                                                         color: fKosong == 1 ? Colors.orange.shade900 : Colors.black,
@@ -1349,7 +1397,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN BARANG (COMPUTE BACKGROUND PDF + SHARE PDF DIRECTLY)
+// 4. SCREEN BARANG (PDF COMPUTE BACKGROUND & SHARE)
 // ==========================================
 class BarangScreen extends StatefulWidget {
   final VoidCallback onLogout;
