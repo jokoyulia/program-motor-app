@@ -405,8 +405,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _fetchNextNoOrder() async {
     try {
+      // PERBAIKAN: Menambahkan timestamp query parameter (?t=...) untuk menghindari Cache Ngrok/HTTP
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final res = await http.get(
-        Uri.parse('$baseUrl/next-no-order'),
+        Uri.parse('$baseUrl/next-no-order?t=$timestamp'),
         headers: ngrokHeaders,
       );
       if (res.statusCode == 200) {
@@ -984,8 +986,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                     width: 28,
                                     height: 28,
                                     margin: const EdgeInsets.only(right: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0A192F),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF0A192F),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Center(
@@ -1194,7 +1196,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
       } else {
         sb.writeln('$noUrut. $nm');
       }
-      sb.writeln('   Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
+      sb.writeln('    Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
     }
 
     sb.writeln('---------------------------');
