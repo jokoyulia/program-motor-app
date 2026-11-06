@@ -187,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
 
   Future<void> _login() async {
-    if (_kdController.text.isEmpty || _pwdController.text.isEmpty) {
+    if (_kdController.text.trim().isEmpty || _pwdController.text.trim().isEmpty) {
       _showMessage('Kode Sales dan Password wajib diisi');
       return;
     }
@@ -198,36 +198,27 @@ class _LoginScreenState extends State<LoginScreen> {
         Uri.parse('$baseUrl/login'),
         headers: ngrokHeaders,
         body: jsonEncode({
-          'kdSales': _kdController.text,
-          'password': _pwdController.text,
-          'KdSales': _kdController.text,
-          'Password': _pwdController.text,
+          'kdSales': _kdController.text.trim(),
+          'password': _pwdController.text.trim(),
         }),
       );
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        bool isSuccess = data['success'] == true ||
-            data['status'] == 'success' ||
-            data['success'] == 'true';
+        bool isSuccess = data['success'] == true;
 
         if (isSuccess) {
-          String salesKode = data['kdSales'] ??
-              data['KdSales'] ??
-              data['kd_sales'] ??
-              _kdController.text;
-          String salesNama =
-              data['nmSales'] ?? data['NmSales'] ?? data['nm_sales'] ?? 'Sales';
-
+          String salesKode = data['kdSales'] ?? _kdController.text.trim();
+          String salesNama = data['nmSales'] ?? 'Sales';
           widget.onLoginSuccess(salesKode, salesNama);
         } else {
-          _showMessage(data['message'] ?? 'Login Gagal');
+          _showMessage(data['message'] ?? 'Kode Sales atau Password salah!');
         }
       } else {
         _showMessage('Login Gagal (Status HTTP: ${res.statusCode})');
       }
     } catch (e) {
-      _showMessage('Error koneksi API: $e');
+      _showMessage('Error koneksi API login: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -363,7 +354,7 @@ class _OrderScreenState extends State<OrderScreen> {
   List<dynamic> searchResults = [];
   bool _isSearching = false;
 
-  List<Map<String, dynamic>> cart = [];
+  List> cart = [];
   bool isEditMode = false;
   bool _isSaving = false;
 
@@ -448,7 +439,7 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() => allCustomers = jsonDecode(res.body));
       }
     } catch (e) {
-      // Handle error
+      // Ignore exception
     }
   }
 
@@ -1802,7 +1793,6 @@ class _OmzetSalesScreenState extends State<OmzetSalesScreen> {
       ),
       body: Column(
         children: [
-          // DROPDOWN BULAN
           Container(
             padding: const EdgeInsets.all(12),
             color: Colors.white,
@@ -1834,7 +1824,6 @@ class _OmzetSalesScreenState extends State<OmzetSalesScreen> {
             ),
           ),
 
-          // SUMMARY RINGKASAN OMZET
           Padding(
             padding: const EdgeInsets.all(12),
             child: Card(
@@ -1895,7 +1884,6 @@ class _OmzetSalesScreenState extends State<OmzetSalesScreen> {
             ),
           ),
 
-          // LIST DETAIL OMZET PER CUSTOMER
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
