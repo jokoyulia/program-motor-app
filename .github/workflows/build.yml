@@ -1,37 +1,51 @@
-name: Build Flutter APK
+name: Build Android APK
 
 on:
   push:
     branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v3
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          cache: true
 
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Build APK Release
-        run: flutter build apk --release
+      - name: Build Clean Flutter App
+        run: |
+          # Cari folder tempat lib dan pubspec.yaml berada
+          PROJ_DIR=$(find . -maxdepth 3 -name "pubspec.yaml" -exec dirname {} \;)
+          
+          # Buat project Flutter baru yang segar & kompatibel penuh
+          flutter create my_app --platforms=android
+          
+          # Salin kode Dart & pubspec milik Anda ke project baru
+          cp -r $PROJ_DIR/lib my_app/
+          cp $PROJ_DIR/pubspec.yaml my_app/
+          
+          cd my_app
+          
+          # Injeksi Izin Internet ke AndroidManifest.xml
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' $MANIFEST_FILE
+          
+          # Unduh dependency dan Build APK
+          flutter pub get
+          flutter build apk --release
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: '**/build/app/outputs/flutter-apk/app-release.apk'
