@@ -1,4 +1,4 @@
-import 'dart0:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -133,11 +133,6 @@ class _MainNavigationState extends State<MainNavigation> {
         onLogout: _logout,
       ),
       BarangScreen(onLogout: _logout),
-      OmzetSalesScreen(
-        kdSales: loggedKdSales!,
-        nmSales: loggedNmSales!,
-        onLogout: _logout,
-      ),
     ];
 
     return PopScope(
@@ -150,7 +145,6 @@ class _MainNavigationState extends State<MainNavigation> {
         body: pages[_currentIndex],
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
-          type: BottomNavigationBarType.fixed,
           selectedItemColor: const Color(0xFF0A192F),
           unselectedItemColor: Colors.grey,
           onTap: (i) => setState(() => _currentIndex = i),
@@ -161,8 +155,6 @@ class _MainNavigationState extends State<MainNavigation> {
                 icon: Icon(Icons.receipt_long), label: 'Data Order'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.inventory), label: 'Data Barang'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.monetization_on), label: 'Omzet Sales'),
           ],
         ),
       ),
@@ -187,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
 
   Future<void> _login() async {
-    if (_kdController.text.trim().isEmpty || _pwdController.text.trim().isEmpty) {
+    if (_kdController.text.isEmpty || _pwdController.text.isEmpty) {
       _showMessage('Kode Sales dan Password wajib diisi');
       return;
     }
@@ -198,27 +190,36 @@ class _LoginScreenState extends State<LoginScreen> {
         Uri.parse('$baseUrl/login'),
         headers: ngrokHeaders,
         body: jsonEncode({
-          'kdSales': _kdController.text.trim(),
-          'password': _pwdController.text.trim(),
+          'kdSales': _kdController.text,
+          'password': _pwdController.text,
+          'KdSales': _kdController.text,
+          'Password': _pwdController.text,
         }),
       );
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        bool isSuccess = data['success'] == true;
+        bool isSuccess = data['success'] == true ||
+            data['status'] == 'success' ||
+            data['success'] == 'true';
 
         if (isSuccess) {
-          String salesKode = data['kdSales'] ?? _kdController.text.trim();
-          String salesNama = data['nmSales'] ?? 'Sales';
+          String salesKode = data['kdSales'] ??
+              data['KdSales'] ??
+              data['kd_sales'] ??
+              _kdController.text;
+          String salesNama =
+              data['nmSales'] ?? data['NmSales'] ?? data['nm_sales'] ?? 'Sales';
+
           widget.onLoginSuccess(salesKode, salesNama);
         } else {
-          _showMessage(data['message'] ?? 'Kode Sales atau Password salah!');
+          _showMessage(data['message'] ?? 'Login Gagal');
         }
       } else {
         _showMessage('Login Gagal (Status HTTP: ${res.statusCode})');
       }
     } catch (e) {
-      _showMessage('Error koneksi API login: $e');
+      _showMessage('Error koneksi API: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -318,7 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // ==========================================
-// 2. SCREEN INPUT & SIMPAN/EDIT ORDER
+// 2. SCREEN INPUT & SIMPAN/EDIT ORDER (MAKS 33 ITEM & NO URUT)
 // ==========================================
 class OrderScreen extends StatefulWidget {
   final String kdSales;
@@ -354,7 +355,7 @@ class _OrderScreenState extends State<OrderScreen> {
   List<dynamic> searchResults = [];
   bool _isSearching = false;
 
-  List> cart = [];
+  List<Map<String, dynamic>> cart = [];
   bool isEditMode = false;
   bool _isSaving = false;
 
@@ -404,9 +405,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _fetchNextNoOrder() async {
     try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final res = await http.get(
-        Uri.parse('$baseUrl/next-no-order?t=$timestamp'),
+        Uri.parse('$baseUrl/next-no-order'),
         headers: ngrokHeaders,
       );
       if (res.statusCode == 200) {
@@ -439,7 +439,7 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() => allCustomers = jsonDecode(res.body));
       }
     } catch (e) {
-      // Ignore exception
+      // Handle error
     }
   }
 
@@ -484,6 +484,7 @@ class _OrderScreenState extends State<OrderScreen> {
     String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
     int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
 
+    // BATAS MAKSIMAL 33 BARIS
     if (cart.length >= 33 && existingIdx < 0) {
       _showMsg('Gagal! 1 Nota Order dibatasi maksimal 33 item / baris.');
       return;
@@ -974,16 +975,17 @@ class _OrderScreenState extends State<OrderScreen> {
                               final item = cart[i];
                               double stokM = item['stokMaster'] ?? 0;
                               bool isKosong = stokM <= 0;
-                              int noUrut = i + 1;
+                              int noUrut = i + 1; // NOMOR URUT ITEM
 
                               return Row(
                                 children: [
+                                  // BADGE NOMOR URUT
                                   Container(
                                     width: 28,
                                     height: 28,
                                     margin: const EdgeInsets.only(right: 8),
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF0A192F),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0A192F),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Center(
@@ -1395,7 +1397,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN BARANG
+// 4. SCREEN BARANG (PDF COMPUTE BACKGROUND & SHARE)
 // ==========================================
 class BarangScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -1690,265 +1692,6 @@ class _BarangScreenState extends State<BarangScreen> {
                                 'Rp ${formatRibuan(hrg)}',
                                 style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==========================================
-// 5. SCREEN OMZET SALES (KHUSUS PER SALES)
-// ==========================================
-class OmzetSalesScreen extends StatefulWidget {
-  final String kdSales;
-  final String nmSales;
-  final VoidCallback onLogout;
-
-  const OmzetSalesScreen({
-    super.key,
-    required this.kdSales,
-    required this.nmSales,
-    required this.onLogout,
-  });
-
-  @override
-  State<OmzetSalesScreen> createState() => _OmzetSalesScreenState();
-}
-
-class _OmzetSalesScreenState extends State<OmzetSalesScreen> {
-  bool isLoading = false;
-  late String selectedBulan;
-  final List<String> listBulan = [];
-
-  double totalJualKotor = 0;
-  double totalRetur = 0;
-  double omzetBersih = 0;
-  List<dynamic> details = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _generateMonthList();
-    _fetchOmzet();
-  }
-
-  void _generateMonthList() {
-    DateTime now = DateTime.now();
-    for (int i = 0; i < 12; i++) {
-      DateTime d = DateTime(now.year, now.month - i, 1);
-      String monthStr = "${d.year}-${d.month.toString().padLeft(2, '0')}";
-      listBulan.add(monthStr);
-    }
-    selectedBulan = listBulan.first;
-  }
-
-  Future<void> _fetchOmzet() async {
-    setState(() => isLoading = true);
-    try {
-      final url = '$baseUrl/omzet?sales=${widget.kdSales}&bulan=$selectedBulan';
-      final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        setState(() {
-          totalJualKotor = double.tryParse((data['totalJualKotor'] ?? 0).toString()) ?? 0;
-          totalRetur = double.tryParse((data['totalRetur'] ?? 0).toString()) ?? 0;
-          omzetBersih = double.tryParse((data['omzetBersih'] ?? 0).toString()) ?? 0;
-          details = data['details'] ?? [];
-        });
-      } else {
-        _showMsg('Gagal memuat omzet status HTTP: ${res.statusCode}');
-      }
-    } catch (e) {
-      _showMsg('Error koneksi API omzet: $e');
-    } finally {
-      setState(() => isLoading = false);
-    }
-  }
-
-  void _showMsg(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Omzet Penjualan: ${widget.nmSales}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchOmzet,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: widget.onLogout,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            color: Colors.white,
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
-                const SizedBox(width: 8),
-                const Text('Pilih Bulan: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: selectedBulan,
-                    decoration: const InputDecoration(
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: listBulan.map((b) {
-                      return DropdownMenuItem(value: b, child: Text(b));
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => selectedBulan = val);
-                        _fetchOmzet();
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Card(
-              color: const Color(0xFF0A192F),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Text('TOTAL OMZET BERSIH',
-                        style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Rp ${formatRibuan(omzetBersih)}',
-                      style: const TextStyle(
-                        color: Colors.greenAccent,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Divider(color: Colors.white24, height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Penjualan Kotor', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                            Text('Rp ${formatRibuan(totalJualKotor)}',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text('Total Retur', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                            Text('Rp ${formatRibuan(totalRetur)}',
-                                style: TextStyle(
-                                    color: totalRetur > 0 ? Colors.redAccent : Colors.white,
-                                    fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Rincian Omzet Per Customer:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0A192F))),
-            ),
-          ),
-
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : details.isEmpty
-                    ? const Center(child: Text('Tidak ada transaksi penjualan pada bulan ini.'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: details.length,
-                        itemBuilder: (context, i) {
-                          final item = details[i];
-                          String nm = item['nmCust'] ?? item['kdCust'] ?? '-';
-                          String kd = item['kdCust'] ?? '-';
-                          double jual = double.tryParse((item['totalJual'] ?? 0).toString()) ?? 0;
-                          double retur = double.tryParse((item['totalRetur'] ?? 0).toString()) ?? 0;
-                          double net = double.tryParse((item['omzetNet'] ?? 0).toString()) ?? 0;
-
-                          return Card(
-                            elevation: 2,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ExpansionTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: Color(0xFF1E3A8A),
-                                child: Icon(Icons.person, color: Colors.white, size: 20),
-                              ),
-                              title: Text('$nm ($kd)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                              subtitle: Text('Omzet Bersih: Rp ${formatRibuan(net)}',
-                                  style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  color: Colors.grey.shade50,
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('Total Penjualan:'),
-                                          Text('Rp ${formatRibuan(jual)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('Potongan Retur Jual:'),
-                                          Text('Rp ${formatRibuan(retur)}',
-                                              style: TextStyle(
-                                                  color: retur > 0 ? Colors.red : Colors.grey,
-                                                  fontWeight: FontWeight.w600)),
-                                        ],
-                                      ),
-                                      const Divider(),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('Omzet Sesudah Kurang Retur:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          Text('Rp ${formatRibuan(net)}',
-                                              style: const TextStyle(
-                                                  color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              ],
                             ),
                           );
                         },
