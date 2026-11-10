@@ -229,11 +229,12 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _showMessage('Error koneksi API: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   void _showMessage(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
@@ -363,7 +364,8 @@ class _OrderScreenState extends State<OrderScreen> {
   List<dynamic> searchResults = [];
   bool _isSearching = false;
 
-  List> cart = [];
+  // PERBAIKAN: tipe generik yang sebelumnya hilang ("List> cart")
+  List<Map<String, dynamic>> cart = [];
   bool isEditMode = false;
   bool _isSaving = false;
 
@@ -430,6 +432,7 @@ class _OrderScreenState extends State<OrderScreen> {
         Uri.parse('$baseUrl/next-no-order'),
         headers: ngrokHeaders,
       );
+      if (!mounted) return;
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
@@ -439,6 +442,7 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() => noOrder = _fallbackNoOrder());
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => noOrder = _fallbackNoOrder());
     }
   }
@@ -456,7 +460,7 @@ class _OrderScreenState extends State<OrderScreen> {
         Uri.parse('$baseUrl/customer'),
         headers: ngrokHeaders,
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         setState(() => allCustomers = jsonDecode(res.body));
       }
     } catch (e) {
@@ -491,13 +495,13 @@ class _OrderScreenState extends State<OrderScreen> {
         Uri.parse('$baseUrl/barang?cari=$q'),
         headers: ngrokHeaders,
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         setState(() => searchResults = jsonDecode(res.body));
       }
     } catch (e) {
       _showMsg('Gagal cari barang: $e');
     } finally {
-      setState(() => _isSearching = false);
+      if (mounted) setState(() => _isSearching = false);
     }
   }
 
@@ -630,7 +634,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   double get _totalHarga {
-    return cart.fold(0, (sum, item) => sum + (item['subtotal'] as double));
+    return cart.fold<double>(
+        0, (sum, item) => sum + (item['subtotal'] as double));
   }
 
   void _resetForm() {
@@ -709,11 +714,12 @@ class _OrderScreenState extends State<OrderScreen> {
     } catch (e) {
       _showMsg('Error koneksi simpan order: $e');
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   void _showMsg(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
@@ -1062,7 +1068,8 @@ class _OrderScreenState extends State<OrderScreen> {
                               final item = cart[i];
                               double stokM = item['stokMaster'] ?? 0;
                               double qty = item['qty'] ?? 0;
-                              bool isKurangStok = (item['fKosong'] == 1) || (qty > stokM);
+                              bool isKurangStok =
+                                  (item['fKosong'] == 1) || (qty > stokM);
                               int noUrut = i + 1;
 
                               return Row(
@@ -1254,18 +1261,21 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
         List<dynamic> loaded = jsonDecode(res.body);
         // Proteksi Tambahan di Sisi Client: Pastikan hanya data Sales Ybs
         loaded = loaded.where((o) {
-          String s = (o['sales'] ?? o['Sales'] ?? o['kdSales'] ?? o['KdSales'] ?? '').toString();
+          String s = (o['sales'] ?? o['Sales'] ?? o['kdSales'] ?? o['KdSales'] ?? '')
+              .toString();
           return s.toLowerCase() == widget.kdSales.toLowerCase();
         }).toList();
 
-        setState(() => orders = loaded);
+        if (mounted) setState(() => orders = loaded);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal memuat data order: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat data order: $e')),
+        );
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -1273,8 +1283,10 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     String no = order['noOrder'] ?? order['NoOrder'] ?? '';
     String tgl = order['tglOrder'] ?? order['TglOrder'] ?? '';
     String cust = order['nmCust'] ?? order['NmCust'] ?? order['kdCust'] ?? '';
-    String sales = order['nmSales'] ?? order['NmSales'] ?? order['sales'] ?? widget.nmSales;
-    double total = double.tryParse((order['total'] ?? order['Total'] ?? 0).toString()) ?? 0;
+    String sales =
+        order['nmSales'] ?? order['NmSales'] ?? order['sales'] ?? widget.nmSales;
+    double total =
+        double.tryParse((order['total'] ?? order['Total'] ?? 0).toString()) ?? 0;
 
     List<dynamic> items = order['items'] ?? order['Items'] ?? [];
 
@@ -1293,10 +1305,15 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     for (int idx = 0; idx < items.length; idx++) {
       var item = items[idx];
       String nm = item['nmBarang'] ?? item['NmBarang'] ?? '';
-      double hrg = double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
-      double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
-      double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
-      int fKosong = int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
+      double hrg =
+          double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
+      double qty =
+          double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
+      double sub =
+          double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ??
+              0;
+      int fKosong =
+          int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
 
       int noUrut = idx + 1;
 
@@ -1306,13 +1323,15 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
       } else {
         sb.writeln('$noUrut. $nm');
       }
-      sb.writeln('    Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
+      sb.writeln(
+          '    Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
     }
 
     sb.writeln('---------------------------');
     sb.writeln('TOTAL : Rp ${formatRibuan(total)}');
     if (adaKosong) {
-      sb.writeln('* Catatan: Item bertanda (*) adalah barang stok tidak cukup/kosong.');
+      sb.writeln(
+          '* Catatan: Item bertanda (*) adalah barang stok tidak cukup/kosong.');
     }
     sb.writeln('===========================');
     sb.writeln('Terima kasih atas order Anda!');
@@ -1346,13 +1365,15 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
               children: [
                 const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
                 const SizedBox(width: 8),
-                const Text('Pilih Bulan: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Pilih Bulan: ',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: selectedBulan,
                     decoration: const InputDecoration(
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       border: OutlineInputBorder(),
                     ),
                     items: listBulan.map((b) {
@@ -1383,8 +1404,10 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                     _fetchOrders();
                   },
                 ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               onSubmitted: (val) => _fetchOrders(val),
             ),
@@ -1393,7 +1416,8 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : orders.isEmpty
-                    ? const Center(child: Text('Tidak ada data order Anda pada bulan ini.'))
+                    ? const Center(
+                        child: Text('Tidak ada data order Anda pada bulan ini.'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: orders.length,
@@ -1401,8 +1425,14 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                           final o = orders[i];
                           String no = o['noOrder'] ?? o['NoOrder'] ?? '';
                           String status = o['status'] ?? o['Status'] ?? 'BARU';
-                          String cust = o['nmCust'] ?? o['NmCust'] ?? o['kdCust'] ?? o['KdCust'] ?? '-';
-                          double total = double.tryParse((o['total'] ?? o['Total'] ?? 0).toString()) ?? 0;
+                          String cust = o['nmCust'] ??
+                              o['NmCust'] ??
+                              o['kdCust'] ??
+                              o['KdCust'] ??
+                              '-';
+                          double total = double.tryParse(
+                                  (o['total'] ?? o['Total'] ?? 0).toString()) ??
+                              0;
                           List<dynamic> items = o['items'] ?? o['Items'] ?? [];
 
                           bool isBaru = status.toUpperCase() == 'BARU';
@@ -1412,14 +1442,20 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                             elevation: 3,
                             child: ExpansionTile(
                               leading: CircleAvatar(
-                                backgroundColor: isBaru ? Colors.green : Colors.blueGrey,
-                                child: const Icon(Icons.receipt, color: Colors.white, size: 20),
+                                backgroundColor:
+                                    isBaru ? Colors.green : Colors.blueGrey,
+                                child: const Icon(Icons.receipt,
+                                    color: Colors.white, size: 20),
                               ),
-                              title: Text('$no - $cust', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              title: Text('$no - $cust',
+                                  style:
+                                      const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(
                                   'Status: $status | Total: Rp ${formatRibuan(total)}',
                                   style: TextStyle(
-                                      color: isBaru ? Colors.green.shade800 : Colors.black,
+                                      color: isBaru
+                                          ? Colors.green.shade800
+                                          : Colors.black,
                                       fontWeight: FontWeight.w600)),
                               children: [
                                 const Divider(height: 1),
@@ -1429,40 +1465,70 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Sales: ${o['nmSales'] ?? o['Sales'] ?? widget.nmSales}',
-                                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                      Text('Tanggal: ${o['tglOrder'] ?? o['TglOrder'] ?? '-'}',
-                                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      Text(
+                                          'Sales: ${o['nmSales'] ?? o['Sales'] ?? widget.nmSales}',
+                                          style: const TextStyle(
+                                              fontSize: 12, color: Colors.grey)),
+                                      Text(
+                                          'Tanggal: ${o['tglOrder'] ?? o['TglOrder'] ?? '-'}',
+                                          style: const TextStyle(
+                                              fontSize: 12, color: Colors.grey)),
                                       const SizedBox(height: 8),
                                       const Text('Detail Items:',
-                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13)),
                                       const SizedBox(height: 4),
                                       ListView.builder(
                                         shrinkWrap: true,
-                                        physics: const NeverScrollableScrollPhysics(),
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
                                         itemCount: items.length,
                                         itemBuilder: (ctx, idx) {
                                           final item = items[idx];
-                                          double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
-                                          double sub = double.tryParse((item['subtotal'] ?? item['Subtotal'] ?? 0).toString()) ?? 0;
-                                          int fKosong = int.tryParse((item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ?? 0;
+                                          double qty = double.tryParse(
+                                                  (item['qty'] ?? item['Qty'] ?? 0)
+                                                      .toString()) ??
+                                              0;
+                                          double sub = double.tryParse(
+                                                  (item['subtotal'] ??
+                                                          item['Subtotal'] ??
+                                                          0)
+                                                      .toString()) ??
+                                              0;
+                                          int fKosong = int.tryParse(
+                                                  (item['fKosong'] ??
+                                                          item['FKosong'] ??
+                                                          0)
+                                                      .toString()) ??
+                                              0;
 
                                           return Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 2),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 2),
                                             child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceBetween,
                                               children: [
                                                 Expanded(
                                                   child: Text(
                                                     '${idx + 1}. ${fKosong == 1 ? "* " : ""}${item['nmBarang'] ?? item['NmBarang']} (${formatRibuan(qty)}x)',
                                                     style: TextStyle(
                                                         fontSize: 12,
-                                                        color: fKosong == 1 ? Colors.orange.shade900 : Colors.black,
-                                                        fontWeight: fKosong == 1 ? FontWeight.bold : FontWeight.normal),
+                                                        color: fKosong == 1
+                                                            ? Colors
+                                                                .orange.shade900
+                                                            : Colors.black,
+                                                        fontWeight: fKosong == 1
+                                                            ? FontWeight.bold
+                                                            : FontWeight.normal),
                                                   ),
                                                 ),
                                                 Text('Rp ${formatRibuan(sub)}',
-                                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                                    style: const TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.bold)),
                                               ],
                                             ),
                                           );
@@ -1474,21 +1540,26 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                         children: [
                                           OutlinedButton.icon(
                                             style: OutlinedButton.styleFrom(
-                                              foregroundColor: const Color(0xFF1E3A8A),
+                                              foregroundColor:
+                                                  const Color(0xFF1E3A8A),
                                             ),
                                             onPressed: () => _shareOrder(o),
-                                            icon: const Icon(Icons.share, size: 16),
+                                            icon:
+                                                const Icon(Icons.share, size: 16),
                                             label: const Text('Share Nota'),
                                           ),
                                           const SizedBox(width: 8),
                                           if (isBaru)
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.orange.shade800,
+                                                backgroundColor:
+                                                    Colors.orange.shade800,
                                                 foregroundColor: Colors.white,
                                               ),
-                                              onPressed: () => widget.onEditOrder(o),
-                                              icon: const Icon(Icons.edit, size: 16),
+                                              onPressed: () =>
+                                                  widget.onEditOrder(o),
+                                              icon: const Icon(Icons.edit,
+                                                  size: 16),
                                               label: const Text('Edit Order'),
                                             ),
                                         ],
@@ -1557,16 +1628,28 @@ class _OmsetScreenState extends State<OmsetScreen> {
   Future<void> _fetchOmset() async {
     setState(() => isLoading = true);
     try {
-      final url = '$baseUrl/omset-sales?sales=${widget.kdSales}&bulan=$selectedBulan';
+      final url =
+          '$baseUrl/omset-sales?sales=${widget.kdSales}&bulan=$selectedBulan';
       final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
+        if (!mounted) return;
         setState(() {
-          totalJual = double.tryParse((data['totalJual'] ?? data['TotalJual'] ?? 0).toString()) ?? 0;
-          totalRetur = double.tryParse((data['totalRetur'] ?? data['TotalRetur'] ?? 0).toString()) ?? 0;
-          omsetNetto = double.tryParse((data['omsetNetto'] ?? data['OmsetNetto'] ?? (totalJual - totalRetur)).toString()) ?? 0;
-          jmlNota = int.tryParse((data['jmlNota'] ?? data['JmlNota'] ?? 0).toString()) ?? 0;
+          totalJual = double.tryParse(
+                  (data['totalJual'] ?? data['TotalJual'] ?? 0).toString()) ??
+              0;
+          totalRetur = double.tryParse(
+                  (data['totalRetur'] ?? data['TotalRetur'] ?? 0).toString()) ??
+              0;
+          omsetNetto = double.tryParse((data['omsetNetto'] ??
+                      data['OmsetNetto'] ??
+                      (totalJual - totalRetur))
+                  .toString()) ??
+              0;
+          jmlNota = int.tryParse(
+                  (data['jmlNota'] ?? data['JmlNota'] ?? 0).toString()) ??
+              0;
         });
       } else {
         _showMsg('Gagal mengambil omzet (${res.statusCode})');
@@ -1574,11 +1657,12 @@ class _OmsetScreenState extends State<OmsetScreen> {
     } catch (e) {
       _showMsg('Error koneksi omzet: $e');
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   void _showMsg(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
@@ -1612,13 +1696,15 @@ class _OmsetScreenState extends State<OmsetScreen> {
                   children: [
                     const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
                     const SizedBox(width: 10),
-                    const Text('Pilih Bulan: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Pilih Bulan: ',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         value: selectedBulan,
                         decoration: const InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           border: OutlineInputBorder(),
                         ),
                         items: listBulan.map((b) {
@@ -1638,21 +1724,28 @@ class _OmsetScreenState extends State<OmsetScreen> {
             ),
             const SizedBox(height: 16),
             isLoading
-                ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: CircularProgressIndicator()))
                 : Column(
                     children: [
                       // RANGKUMAN OMZET NETTO
                       Card(
                         elevation: 4,
                         color: const Color(0xFF0A192F),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                         child: Padding(
                           padding: const EdgeInsets.all(20),
                           child: Column(
                             children: [
                               const Text(
                                 'TOTAL OMZET BERSIH (NETO)',
-                                style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 8),
                               Text(
@@ -1666,7 +1759,9 @@ class _OmsetScreenState extends State<OmsetScreen> {
                               const Divider(color: Colors.white24, height: 24),
                               Text(
                                 'Jumlah Transaksi/Nota: $jmlNota Nota',
-                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 12),
                               ),
                             ],
                           ),
@@ -1687,9 +1782,14 @@ class _OmsetScreenState extends State<OmsetScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Icon(Icons.trending_up, color: Colors.green.shade800, size: 20),
+                                        Icon(Icons.trending_up,
+                                            color: Colors.green.shade800,
+                                            size: 20),
                                         const SizedBox(width: 6),
-                                        const Text('Total Penjualan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        const Text('Total Penjualan',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                     const SizedBox(height: 8),
@@ -1718,9 +1818,14 @@ class _OmsetScreenState extends State<OmsetScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Icon(Icons.trending_down, color: Colors.red.shade800, size: 20),
+                                        Icon(Icons.trending_down,
+                                            color: Colors.red.shade800,
+                                            size: 20),
                                         const SizedBox(width: 6),
-                                        const Text('Total Retur', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        const Text('Total Retur',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                     const SizedBox(height: 8),
@@ -1780,15 +1885,17 @@ class _BarangScreenState extends State<BarangScreen> {
         Uri.parse('$baseUrl/barang?cari=$q'),
         headers: ngrokHeaders,
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         setState(() => allBarang = jsonDecode(res.body));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal memuat barang: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat barang: $e')),
+        );
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -1845,8 +1952,7 @@ class _BarangScreenState extends State<BarangScreen> {
                 margin: const pw.EdgeInsets.only(top: 12, bottom: 6),
                 padding: const pw.EdgeInsets.all(6),
                 color: PdfColors.grey300,
-                child: pw.Text(
-                    'KELOMPOK BARANG: ${kelompokName.toUpperCase()}',
+                child: pw.Text('KELOMPOK BARANG: ${kelompokName.toUpperCase()}',
                     style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold, fontSize: 11)),
               ),
@@ -1905,8 +2011,7 @@ class _BarangScreenState extends State<BarangScreen> {
   Future<void> _generatePdfAndShare() async {
     if (selectedKdBarang.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Pilih / Centang barang terlebih dahulu!')),
+        const SnackBar(content: Text('Pilih / Centang barang terlebih dahulu!')),
       );
       return;
     }
@@ -1926,11 +2031,13 @@ class _BarangScreenState extends State<BarangScreen> {
         filename: 'Katalog_Barang_Lucky_Indo_Motor.pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal membuat PDF Katalog: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal membuat PDF Katalog: $e')),
+        );
+      }
     } finally {
-      setState(() => isPdfBuilding = false);
+      if (mounted) setState(() => isPdfBuilding = false);
     }
   }
 
