@@ -132,6 +132,11 @@ class _MainNavigationState extends State<MainNavigation> {
         onEditOrder: _navigateToEditOrder,
         onLogout: _logout,
       ),
+      OmsetScreen(
+        kdSales: loggedKdSales!,
+        nmSales: loggedNmSales!,
+        onLogout: _logout,
+      ),
       BarangScreen(onLogout: _logout),
     ];
 
@@ -145,6 +150,7 @@ class _MainNavigationState extends State<MainNavigation> {
         body: pages[_currentIndex],
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
+          type: BottomNavigationBarType.fixed,
           selectedItemColor: const Color(0xFF0A192F),
           unselectedItemColor: Colors.grey,
           onTap: (i) => setState(() => _currentIndex = i),
@@ -153,6 +159,8 @@ class _MainNavigationState extends State<MainNavigation> {
                 icon: Icon(Icons.shopping_cart), label: 'Input Order'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.receipt_long), label: 'Data Order'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.analytics), label: 'Omzet Sales'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.inventory), label: 'Data Barang'),
           ],
@@ -319,7 +327,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // ==========================================
-// 2. SCREEN INPUT & SIMPAN/EDIT ORDER (MAKS 33 ITEM & NO URUT)
+// 2. SCREEN INPUT & SIMPAN/EDIT ORDER
 // ==========================================
 class OrderScreen extends StatefulWidget {
   final String kdSales;
@@ -355,7 +363,7 @@ class _OrderScreenState extends State<OrderScreen> {
   List<dynamic> searchResults = [];
   bool _isSearching = false;
 
-  List<Map<String, dynamic>> cart = [];
+  List> cart = [];
   bool isEditMode = false;
   bool _isSaving = false;
 
@@ -374,7 +382,8 @@ class _OrderScreenState extends State<OrderScreen> {
   @override
   void didUpdateWidget(covariant OrderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.editOrderData != null && widget.editOrderData != oldWidget.editOrderData) {
+    if (widget.editOrderData != null &&
+        widget.editOrderData != oldWidget.editOrderData) {
       _populateEditData(widget.editOrderData!);
     }
   }
@@ -389,15 +398,27 @@ class _OrderScreenState extends State<OrderScreen> {
       cart.clear();
       List<dynamic> items = data['items'] ?? data['Items'] ?? [];
       for (var item in items) {
-        double harga = double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ?? 0;
-        double qty = double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
+        double harga =
+            double.tryParse((item['harga'] ?? item['Harga'] ?? 0).toString()) ??
+                0;
+        double qty =
+            double.tryParse((item['qty'] ?? item['Qty'] ?? 0).toString()) ?? 0;
+        double stokMaster = double.tryParse(
+                (item['stokMaster'] ?? item['StokMaster'] ?? item['stok'] ?? 9999)
+                    .toString()) ??
+            9999.0;
+        int fKosong = int.tryParse(
+                (item['fKosong'] ?? item['FKosong'] ?? 0).toString()) ??
+            0;
+
         cart.add({
           'kdBarang': item['kdBarang'] ?? item['KdBarang'],
           'nmBarang': item['nmBarang'] ?? item['NmBarang'],
           'harga': harga,
           'qty': qty,
           'subtotal': harga * qty,
-          'stokMaster': 9999.0,
+          'stokMaster': stokMaster,
+          'fKosong': fKosong,
         });
       }
     });
@@ -484,15 +505,17 @@ class _OrderScreenState extends State<OrderScreen> {
     String kdBg = barang['kdBarang'] ?? barang['KdBarang'] ?? '';
     int existingIdx = cart.indexWhere((item) => item['kdBarang'] == kdBg);
 
-    // BATAS MAKSIMAL 33 BARIS
     if (cart.length >= 33 && existingIdx < 0) {
       _showMsg('Gagal! 1 Nota Order dibatasi maksimal 33 item / baris.');
       return;
     }
 
     final qtyController = TextEditingController(text: '1');
-    double harga = double.tryParse((barang['hrgJual'] ?? barang['HrgJual'] ?? 0).toString()) ?? 0;
-    double stokMaster = double.tryParse((barang['stok'] ?? barang['Stok'] ?? 0).toString()) ?? 0;
+    double harga = double.tryParse(
+            (barang['hrgJual'] ?? barang['HrgJual'] ?? 0).toString()) ??
+        0;
+    double stokMaster =
+        double.tryParse((barang['stok'] ?? barang['Stok'] ?? 0).toString()) ?? 0;
     String nmBg = barang['nmBarang'] ?? barang['NmBarang'] ?? '';
 
     double existingInCartQty = 0;
@@ -509,14 +532,20 @@ class _OrderScreenState extends State<OrderScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Harga: Rp ${formatRibuan(harga)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('Harga: Rp ${formatRibuan(harga)}',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             Text('Stok Efektif Tersedia: ${formatRibuan(stokTersedia)}',
-                style: TextStyle(color: stokTersedia > 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                style: TextStyle(
+                    color: stokTersedia > 0 ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold)),
             if (stokTersedia <= 0)
               const Padding(
                 padding: EdgeInsets.only(top: 4.0),
-                child: Text('* Stok Kosong (Tetap bisa diorder & akan ditandai *)',
-                    style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold)),
+                child: Text('* Stok Kosong/Tidak Cukup (Tetap diorder & ditandai *)',
+                    style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
               ),
             const SizedBox(height: 12),
             TextField(
@@ -549,8 +578,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
               setState(() {
                 if (existingIdx >= 0) {
-                  cart[existingIdx]['qty'] += qtyInput;
-                  cart[existingIdx]['subtotal'] = cart[existingIdx]['qty'] * harga;
+                  double newQty = cart[existingIdx]['qty'] + qtyInput;
+                  cart[existingIdx]['qty'] = newQty;
+                  cart[existingIdx]['subtotal'] = newQty * harga;
+                  cart[existingIdx]['fKosong'] = (newQty > stokMaster) ? 1 : 0;
                 } else {
                   cart.add({
                     'kdBarang': kdBg,
@@ -559,6 +590,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     'qty': qtyInput,
                     'subtotal': qtyInput * harga,
                     'stokMaster': stokMaster,
+                    'fKosong': (qtyInput > stokMaster) ? 1 : 0,
                   });
                 }
                 searchResults.clear();
@@ -584,6 +616,7 @@ class _OrderScreenState extends State<OrderScreen> {
   void _updateCartQty(int index, double delta) {
     double currentQty = cart[index]['qty'];
     double newQty = currentQty + delta;
+    double stokM = cart[index]['stokMaster'] ?? 0;
 
     setState(() {
       if (newQty <= 0) {
@@ -591,6 +624,7 @@ class _OrderScreenState extends State<OrderScreen> {
       } else {
         cart[index]['qty'] = newQty;
         cart[index]['subtotal'] = newQty * cart[index]['harga'];
+        cart[index]['fKosong'] = (newQty > stokM) ? 1 : 0;
       }
     });
   }
@@ -638,13 +672,19 @@ class _OrderScreenState extends State<OrderScreen> {
       "Total": _totalHarga,
       "Status": "BARU",
       "IsEdit": isEditMode,
-      "Items": cart.map((item) => {
-        "NoOrder": noOrder,
-        "KdBarang": item['kdBarang'],
-        "NmBarang": item['nmBarang'],
-        "Harga": item['harga'],
-        "Qty": item['qty'],
-        "Subtotal": item['subtotal']
+      "Items": cart.map((item) {
+        double stokM = item['stokMaster'] ?? 0;
+        double qty = item['qty'] ?? 0;
+        bool kurang = qty > stokM;
+        return {
+          "NoOrder": noOrder,
+          "KdBarang": item['kdBarang'],
+          "NmBarang": item['nmBarang'],
+          "Harga": item['harga'],
+          "Qty": qty,
+          "Subtotal": item['subtotal'],
+          "FKosong": (item['fKosong'] == 1 || kurang) ? 1 : 0
+        };
       }).toList(),
     };
 
@@ -657,8 +697,11 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final resData = jsonDecode(res.body);
 
-      if (res.statusCode == 200 && (resData['success'] == true || resData['status'] == 'success')) {
-        _showMsg(isEditMode ? 'Order $noOrder Berhasil Diperbarui!' : 'Order $noOrder Berhasil Disimpan!');
+      if (res.statusCode == 200 &&
+          (resData['success'] == true || resData['status'] == 'success')) {
+        _showMsg(isEditMode
+            ? 'Order $noOrder Berhasil Diperbarui!'
+            : 'Order $noOrder Berhasil Disimpan!');
         _resetForm();
       } else {
         _showMsg(resData['message'] ?? 'Gagal menyimpan order.');
@@ -681,7 +724,8 @@ class _OrderScreenState extends State<OrderScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(isEditMode ? 'Edit Order ($noOrder)' : 'Input Order Sales', style: const TextStyle(fontSize: 16)),
+            Text(isEditMode ? 'Edit Order ($noOrder)' : 'Input Order Sales',
+                style: const TextStyle(fontSize: 16)),
             Text('Sales: ${widget.nmSales} (${widget.kdSales})',
                 style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
@@ -715,22 +759,27 @@ class _OrderScreenState extends State<OrderScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('No. Order:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('No. Order:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isEditMode ? Colors.orange.shade800 : const Color(0xFF1E3A8A),
+                            color: isEditMode
+                                ? Colors.orange.shade800
+                                : const Color(0xFF1E3A8A),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             noOrder,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-
                     if (selectedKdCust != null) ...[
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -747,14 +796,19 @@ class _OrderScreenState extends State<OrderScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Customer Terpilih:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                  const Text('Customer Terpilih:',
+                                      style: TextStyle(
+                                          fontSize: 11, color: Colors.grey)),
                                   Text('$selectedNmCust ($selectedKdCust)',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14)),
                                 ],
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.change_circle, color: Colors.orange),
+                              icon: const Icon(Icons.change_circle,
+                                  color: Colors.orange),
                               tooltip: 'Ganti Customer',
                               onPressed: () => setState(() {
                                 selectedKdCust = null;
@@ -774,7 +828,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                 hintText: 'Cari Nama / Kode Customer...',
                                 border: OutlineInputBorder(),
                                 prefixIcon: Icon(Icons.person_search),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
                               ),
                               onChanged: _searchCustomer,
                             ),
@@ -785,12 +840,14 @@ class _OrderScreenState extends State<OrderScreen> {
                               backgroundColor: const Color(0xFF0A192F),
                               foregroundColor: Colors.white,
                             ),
-                            onPressed: () => _searchCustomer(_searchCustController.text),
+                            onPressed: () =>
+                                _searchCustomer(_searchCustController.text),
                             child: _isSearchingCust
                                 ? const SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))
                                 : const Text('Cari'),
                           ),
                         ],
@@ -801,10 +858,14 @@ class _OrderScreenState extends State<OrderScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('PILIH CUSTOMER (Klik item):',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue)),
                             IconButton(
                               icon: const Icon(Icons.close, size: 18),
-                              onPressed: () => setState(() => custSearchResults.clear()),
+                              onPressed: () =>
+                                  setState(() => custSearchResults.clear()),
                             )
                           ],
                         ),
@@ -819,9 +880,13 @@ class _OrderScreenState extends State<OrderScreen> {
                             String alm = c['alamat'] ?? c['Alamat'] ?? '';
                             return ListTile(
                               dense: true,
-                              title: Text('$nm ($kd)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text(alm.isNotEmpty ? alm : 'Tanpa Alamat'),
-                              trailing: const Icon(Icons.check_circle_outline, color: Colors.green),
+                              title: Text('$nm ($kd)',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  alm.isNotEmpty ? alm : 'Tanpa Alamat'),
+                              trailing: const Icon(Icons.check_circle_outline,
+                                  color: Colors.green),
                               onTap: () {
                                 setState(() {
                                   selectedKdCust = kd;
@@ -840,7 +905,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
             Card(
               elevation: 3,
               child: Padding(
@@ -857,7 +921,8 @@ class _OrderScreenState extends State<OrderScreen> {
                               hintText: 'Cari Nama / Kode Barang...',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.search),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                             ),
                             onSubmitted: _searchBarang,
                           ),
@@ -868,12 +933,14 @@ class _OrderScreenState extends State<OrderScreen> {
                             backgroundColor: const Color(0xFF0A192F),
                             foregroundColor: Colors.white,
                           ),
-                          onPressed: () => _searchBarang(_searchBarangController.text),
+                          onPressed: () =>
+                              _searchBarang(_searchBarangController.text),
                           icon: _isSearching
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2))
                               : const Icon(Icons.search),
                           label: const Text('Cari'),
                         ),
@@ -885,10 +952,14 @@ class _OrderScreenState extends State<OrderScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('PILIH BARANG (Klik item):',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue)),
                           IconButton(
                             icon: const Icon(Icons.close, size: 18),
-                            onPressed: () => setState(() => searchResults.clear()),
+                            onPressed: () =>
+                                setState(() => searchResults.clear()),
                           )
                         ],
                       ),
@@ -898,8 +969,13 @@ class _OrderScreenState extends State<OrderScreen> {
                         itemCount: searchResults.length,
                         itemBuilder: (context, i) {
                           final b = searchResults[i];
-                          double hrg = double.tryParse((b['hrgJual'] ?? b['HrgJual'] ?? 0).toString()) ?? 0;
-                          double stok = double.tryParse((b['stok'] ?? b['Stok'] ?? 0).toString()) ?? 0;
+                          double hrg = double.tryParse(
+                                  (b['hrgJual'] ?? b['HrgJual'] ?? 0)
+                                      .toString()) ??
+                              0;
+                          double stok = double.tryParse(
+                                  (b['stok'] ?? b['Stok'] ?? 0).toString()) ??
+                              0;
                           bool isKosong = stok <= 0;
 
                           return ListTile(
@@ -908,12 +984,16 @@ class _OrderScreenState extends State<OrderScreen> {
                               b['nmBarang'] ?? b['NmBarang'] ?? '',
                               style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: isKosong ? Colors.orange.shade900 : Colors.black),
+                                  color: isKosong
+                                      ? Colors.orange.shade900
+                                      : Colors.black),
                             ),
                             subtitle: Text(
                                 'Kode: ${b['kdBarang'] ?? b['KdBarang']} | Stok: ${formatRibuan(stok)} ${isKosong ? "(*STOK KOSONG)" : ""}'),
                             trailing: Text('Rp ${formatRibuan(hrg)}',
-                                style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
+                                style: const TextStyle(
+                                    color: Color(0xFF1E3A8A),
+                                    fontWeight: FontWeight.bold)),
                             onTap: () => _addBarangToCartDialog(b),
                           );
                         },
@@ -924,7 +1004,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
             Card(
               elevation: 3,
               child: Padding(
@@ -936,20 +1015,28 @@ class _OrderScreenState extends State<OrderScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Daftar Item Order:',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: cart.length >= 33 ? Colors.red.shade100 : Colors.blue.shade50,
+                            color: cart.length >= 33
+                                ? Colors.red.shade100
+                                : Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                                color: cart.length >= 33 ? Colors.red : Colors.blue.shade300),
+                                color: cart.length >= 33
+                                    ? Colors.red
+                                    : Colors.blue.shade300),
                           ),
                           child: Text(
                             '${cart.length} / 33 Baris',
                             style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: cart.length >= 33 ? Colors.red.shade900 : const Color(0xFF1E3A8A)),
+                                color: cart.length >= 33
+                                    ? Colors.red.shade900
+                                    : const Color(0xFF1E3A8A)),
                           ),
                         ),
                       ],
@@ -974,18 +1061,18 @@ class _OrderScreenState extends State<OrderScreen> {
                             itemBuilder: (ctx, i) {
                               final item = cart[i];
                               double stokM = item['stokMaster'] ?? 0;
-                              bool isKosong = stokM <= 0;
-                              int noUrut = i + 1; // NOMOR URUT ITEM
+                              double qty = item['qty'] ?? 0;
+                              bool isKurangStok = (item['fKosong'] == 1) || (qty > stokM);
+                              int noUrut = i + 1;
 
                               return Row(
                                 children: [
-                                  // BADGE NOMOR URUT
                                   Container(
                                     width: 28,
                                     height: 28,
                                     margin: const EdgeInsets.only(right: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0A192F),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF0A192F),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Center(
@@ -1000,37 +1087,47 @@ class _OrderScreenState extends State<OrderScreen> {
                                   ),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '${isKosong ? "* " : ""}${item['nmBarang']}',
+                                          '${isKurangStok ? "* " : ""}${item['nmBarang']}',
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              color: isKosong ? Colors.red.shade800 : Colors.black),
+                                              color: isKurangStok
+                                                  ? Colors.red.shade800
+                                                  : Colors.black),
                                         ),
                                         Text(
                                             'Harga: Rp ${formatRibuan(item['harga'])} x ${formatRibuan(item['qty'])}'),
                                         Text(
-                                            'Subtotal: Rp ${formatRibuan(item['subtotal'])} ${isKosong ? "(*Stok Kosong)" : ""}',
+                                            'Subtotal: Rp ${formatRibuan(item['subtotal'])} ${isKurangStok ? "(*Stok Tidak Cukup)" : ""}',
                                             style: const TextStyle(
-                                                color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
+                                                color: Color(0xFF1E3A8A),
+                                                fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                   ),
                                   Row(
                                     children: [
                                       IconButton(
-                                        icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                        icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            color: Colors.red),
                                         onPressed: () => _updateCartQty(i, -1),
                                       ),
                                       Text(formatRibuan(item['qty']),
-                                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold)),
                                       IconButton(
-                                        icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                                        icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            color: Colors.green),
                                         onPressed: () => _updateCartQty(i, 1),
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.delete, color: Colors.grey),
+                                        icon: const Icon(Icons.delete,
+                                            color: Colors.grey),
                                         onPressed: () => _removeCartItem(i),
                                       ),
                                     ],
@@ -1051,7 +1148,8 @@ class _OrderScreenState extends State<OrderScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('ESTIMASI TOTAL:',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.bold)),
                           Text(
                             'Rp ${formatRibuan(_totalHarga)}',
                             style: const TextStyle(
@@ -1071,16 +1169,22 @@ class _OrderScreenState extends State<OrderScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isEditMode ? Colors.orange.shade800 : const Color(0xFF0A192F),
+                                backgroundColor: isEditMode
+                                    ? Colors.orange.shade800
+                                    : const Color(0xFF0A192F),
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               onPressed: _simpanOrder,
-                              icon: Icon(isEditMode ? Icons.update : Icons.save),
-                              label: Text(isEditMode ? 'UPDATE ORDER' : 'SIMPAN ORDER',
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              icon: Icon(
+                                  isEditMode ? Icons.update : Icons.save),
+                              label: Text(
+                                  isEditMode ? 'UPDATE ORDER' : 'SIMPAN ORDER',
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
                             ),
                           ),
                   ],
@@ -1095,7 +1199,7 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 // ==========================================
-// 3. SCREEN DAFTAR ORDER
+// 3. SCREEN DAFTAR ORDER (FILTER PER SALES LOGGED IN)
 // ==========================================
 class DataOrderScreen extends StatefulWidget {
   final String kdSales;
@@ -1143,10 +1247,18 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
   Future<void> _fetchOrders([String search = '']) async {
     setState(() => isLoading = true);
     try {
-      final url = '$baseUrl/orders-list?sales=${widget.kdSales}&bulan=$selectedBulan&cari=$search';
+      final url =
+          '$baseUrl/orders-list?sales=${widget.kdSales}&bulan=$selectedBulan&cari=$search';
       final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
       if (res.statusCode == 200) {
-        setState(() => orders = jsonDecode(res.body));
+        List<dynamic> loaded = jsonDecode(res.body);
+        // Proteksi Tambahan di Sisi Client: Pastikan hanya data Sales Ybs
+        loaded = loaded.where((o) {
+          String s = (o['sales'] ?? o['Sales'] ?? o['kdSales'] ?? o['KdSales'] ?? '').toString();
+          return s.toLowerCase() == widget.kdSales.toLowerCase();
+        }).toList();
+
+        setState(() => orders = loaded);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1161,7 +1273,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     String no = order['noOrder'] ?? order['NoOrder'] ?? '';
     String tgl = order['tglOrder'] ?? order['TglOrder'] ?? '';
     String cust = order['nmCust'] ?? order['NmCust'] ?? order['kdCust'] ?? '';
-    String sales = order['nmSales'] ?? order['NmSales'] ?? order['sales'] ?? '';
+    String sales = order['nmSales'] ?? order['NmSales'] ?? order['sales'] ?? widget.nmSales;
     double total = double.tryParse((order['total'] ?? order['Total'] ?? 0).toString()) ?? 0;
 
     List<dynamic> items = order['items'] ?? order['Items'] ?? [];
@@ -1190,17 +1302,17 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 
       if (fKosong == 1) {
         adaKosong = true;
-        sb.writeln('$noUrut. * $nm (STOK KOSONG)');
+        sb.writeln('$noUrut. * $nm (STOK TIDAK CUKUP)');
       } else {
         sb.writeln('$noUrut. $nm');
       }
-      sb.writeln('   Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
+      sb.writeln('    Rp ${formatRibuan(hrg)} x ${formatRibuan(qty)} = Rp ${formatRibuan(sub)}');
     }
 
     sb.writeln('---------------------------');
     sb.writeln('TOTAL : Rp ${formatRibuan(total)}');
     if (adaKosong) {
-      sb.writeln('* Catatan: Item bertanda (*) adalah barang stok kosong (dapat dipesan ulang).');
+      sb.writeln('* Catatan: Item bertanda (*) adalah barang stok tidak cukup/kosong.');
     }
     sb.writeln('===========================');
     sb.writeln('Terima kasih atas order Anda!');
@@ -1281,7 +1393,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : orders.isEmpty
-                    ? const Center(child: Text('Tidak ada data order pada bulan ini.'))
+                    ? const Center(child: Text('Tidak ada data order Anda pada bulan ini.'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: orders.length,
@@ -1317,7 +1429,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Sales: ${o['nmSales'] ?? o['Sales'] ?? '-'}',
+                                      Text('Sales: ${o['nmSales'] ?? o['Sales'] ?? widget.nmSales}',
                                           style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                       Text('Tanggal: ${o['tglOrder'] ?? o['TglOrder'] ?? '-'}',
                                           style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -1397,7 +1509,247 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN BARANG (PDF COMPUTE BACKGROUND & SHARE)
+// 4. SCREEN OMZET SALES PER BULAN (BARU)
+// ==========================================
+class OmsetScreen extends StatefulWidget {
+  final String kdSales;
+  final String nmSales;
+  final VoidCallback onLogout;
+
+  const OmsetScreen({
+    super.key,
+    required this.kdSales,
+    required this.nmSales,
+    required this.onLogout,
+  });
+
+  @override
+  State<OmsetScreen> createState() => _OmsetScreenState();
+}
+
+class _OmsetScreenState extends State<OmsetScreen> {
+  late String selectedBulan;
+  final List<String> listBulan = [];
+  bool isLoading = false;
+
+  double totalJual = 0;
+  double totalRetur = 0;
+  double omsetNetto = 0;
+  int jmlNota = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateMonthList();
+    _fetchOmset();
+  }
+
+  void _generateMonthList() {
+    DateTime now = DateTime.now();
+    for (int i = 0; i < 12; i++) {
+      DateTime d = DateTime(now.year, now.month - i, 1);
+      String monthStr = "${d.year}-${d.month.toString().padLeft(2, '0')}";
+      listBulan.add(monthStr);
+    }
+    selectedBulan = listBulan.first;
+  }
+
+  Future<void> _fetchOmset() async {
+    setState(() => isLoading = true);
+    try {
+      final url = '$baseUrl/omset-sales?sales=${widget.kdSales}&bulan=$selectedBulan';
+      final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          totalJual = double.tryParse((data['totalJual'] ?? data['TotalJual'] ?? 0).toString()) ?? 0;
+          totalRetur = double.tryParse((data['totalRetur'] ?? data['TotalRetur'] ?? 0).toString()) ?? 0;
+          omsetNetto = double.tryParse((data['omsetNetto'] ?? data['OmsetNetto'] ?? (totalJual - totalRetur)).toString()) ?? 0;
+          jmlNota = int.tryParse((data['jmlNota'] ?? data['JmlNota'] ?? 0).toString()) ?? 0;
+        });
+      } else {
+        _showMsg('Gagal mengambil omzet (${res.statusCode})');
+      }
+    } catch (e) {
+      _showMsg('Error koneksi omzet: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _showMsg(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Omzet: ${widget.nmSales} (${widget.kdSales})'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchOmset,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: widget.onLogout,
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
+                    const SizedBox(width: 10),
+                    const Text('Pilih Bulan: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: selectedBulan,
+                        decoration: const InputDecoration(
+                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          border: OutlineInputBorder(),
+                        ),
+                        items: listBulan.map((b) {
+                          return DropdownMenuItem(value: b, child: Text(b));
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => selectedBulan = val);
+                            _fetchOmset();
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            isLoading
+                ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                : Column(
+                    children: [
+                      // RANGKUMAN OMZET NETTO
+                      Card(
+                        elevation: 4,
+                        color: const Color(0xFF0A192F),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'TOTAL OMZET BERSIH (NETO)',
+                                style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Rp ${formatRibuan(omsetNetto)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Divider(color: Colors.white24, height: 24),
+                              Text(
+                                'Jumlah Transaksi/Nota: $jmlNota Nota',
+                                style: const TextStyle(color: Colors.white90, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // DETAIL BRUTO & RETUR
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Card(
+                              elevation: 2,
+                              color: Colors.green.shade50,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.trending_up, color: Colors.green.shade800, size: 20),
+                                        const SizedBox(width: 6),
+                                        const Text('Total Penjualan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Rp ${formatRibuan(totalJual)}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Card(
+                              elevation: 2,
+                              color: Colors.red.shade50,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.trending_down, color: Colors.red.shade800, size: 20),
+                                        const SizedBox(width: 6),
+                                        const Text('Total Retur', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Rp ${formatRibuan(totalRetur)}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.red.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 5. SCREEN BARANG (PDF COMPUTE BACKGROUND & SHARE)
 // ==========================================
 class BarangScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -1476,9 +1828,11 @@ class _BarangScreenState extends State<BarangScreen> {
               child: pw.Column(
                 children: [
                   pw.Text('LUCKY INDO MOTOR',
-                      style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                      style: pw.TextStyle(
+                          fontSize: 18, fontWeight: pw.FontWeight.bold)),
                   pw.Text('KATALOG DAFTAR BARANG SPAREPART',
-                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                      style: pw.TextStyle(
+                          fontSize: 14, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 16),
                 ],
               ),
@@ -1491,8 +1845,10 @@ class _BarangScreenState extends State<BarangScreen> {
                 margin: const pw.EdgeInsets.only(top: 12, bottom: 6),
                 padding: const pw.EdgeInsets.all(6),
                 color: PdfColors.grey300,
-                child: pw.Text('KELOMPOK BARANG: ${kelompokName.toUpperCase()}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                child: pw.Text(
+                    'KELOMPOK BARANG: ${kelompokName.toUpperCase()}',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold, fontSize: 11)),
               ),
             );
 
@@ -1500,8 +1856,10 @@ class _BarangScreenState extends State<BarangScreen> {
               pw.TableHelper.fromTextArray(
                 context: context,
                 headers: ['Kode Barang', 'Nama Barang', 'Stok', 'Harga Jual'],
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF0A192F)),
+                headerStyle: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFF0A192F)),
                 cellHeight: 20,
                 cellAlignments: {
                   0: pw.Alignment.centerLeft,
@@ -1518,8 +1876,12 @@ class _BarangScreenState extends State<BarangScreen> {
                 data: items.map((b) {
                   String kdBg = b['kdBarang'] ?? b['KdBarang'] ?? '';
                   String nmBg = b['nmBarang'] ?? b['NmBarang'] ?? '';
-                  double stok = double.tryParse((b['stok'] ?? b['Stok'] ?? 0).toString()) ?? 0;
-                  double hrg = double.tryParse((b['hrgJual'] ?? b['HrgJual'] ?? 0).toString()) ?? 0;
+                  double stok = double.tryParse(
+                          (b['stok'] ?? b['Stok'] ?? 0).toString()) ??
+                      0;
+                  double hrg = double.tryParse(
+                          (b['hrgJual'] ?? b['HrgJual'] ?? 0).toString()) ??
+                      0;
 
                   return [
                     kdBg,
@@ -1543,7 +1905,8 @@ class _BarangScreenState extends State<BarangScreen> {
   Future<void> _generatePdfAndShare() async {
     if (selectedKdBarang.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih / Centang barang terlebih dahulu!')),
+        const SnackBar(
+            content: Text('Pilih / Centang barang terlebih dahulu!')),
       );
       return;
     }
@@ -1573,7 +1936,8 @@ class _BarangScreenState extends State<BarangScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isAllSelected = allBarang.isNotEmpty && selectedKdBarang.length == allBarang.length;
+    bool isAllSelected =
+        allBarang.isNotEmpty && selectedKdBarang.length == allBarang.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -1584,7 +1948,8 @@ class _BarangScreenState extends State<BarangScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.picture_as_pdf),
             tooltip: 'Export & Share PDF',
             onPressed: isPdfBuilding ? null : _generatePdfAndShare,
@@ -1615,8 +1980,10 @@ class _BarangScreenState extends State<BarangScreen> {
                           _fetchBarang('');
                         },
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                     ),
                     onSubmitted: (val) => _fetchBarang(val),
                   ),
@@ -1645,11 +2012,13 @@ class _BarangScreenState extends State<BarangScreen> {
                       value: isAllSelected,
                       onChanged: _toggleSelectAll,
                     ),
-                    const Text('Pilih / Centang Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Pilih / Centang Semua',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Text('${formatRibuan(selectedKdBarang.length)} Terpilih',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
               ],
             ),
           ),
@@ -1666,9 +2035,17 @@ class _BarangScreenState extends State<BarangScreen> {
                           final item = allBarang[i];
                           String kdBg = item['kdBarang'] ?? item['KdBarang'] ?? '';
                           String nmBg = item['nmBarang'] ?? item['NmBarang'] ?? '';
-                          String kelBg = item['nmKelompokBrg'] ?? item['NmKelompokBrg'] ?? 'LAIN-LAIN';
-                          double hrg = double.tryParse((item['hrgJual'] ?? item['HrgJual'] ?? 0).toString()) ?? 0;
-                          double stok = double.tryParse((item['stok'] ?? item['Stok'] ?? 0).toString()) ?? 0;
+                          String kelBg = item['nmKelompokBrg'] ??
+                              item['NmKelompokBrg'] ??
+                              'LAIN-LAIN';
+                          double hrg = double.tryParse(
+                                  (item['hrgJual'] ?? item['HrgJual'] ?? 0)
+                                      .toString()) ??
+                              0;
+                          double stok = double.tryParse(
+                                  (item['stok'] ?? item['Stok'] ?? 0)
+                                      .toString()) ??
+                              0;
 
                           bool isChecked = selectedKdBarang.contains(kdBg);
 
@@ -1686,11 +2063,16 @@ class _BarangScreenState extends State<BarangScreen> {
                                   }
                                 });
                               },
-                              title: Text(nmBg, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Kode: $kdBg | Kelompok: $kelBg | Stok: ${formatRibuan(stok)}'),
+                              title: Text(nmBg,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  'Kode: $kdBg | Kelompok: $kelBg | Stok: ${formatRibuan(stok)}'),
                               secondary: Text(
                                 'Rp ${formatRibuan(hrg)}',
-                                style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Color(0xFF1E3A8A),
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           );
