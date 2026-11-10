@@ -1509,7 +1509,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN OMZET SALES PER BULAN (BARU)
+// 4. SCREEN OMZET SALES PER BULAN
 // ==========================================
 class OmsetScreen extends StatefulWidget {
   final String kdSales;
@@ -1666,7 +1666,7 @@ class _OmsetScreenState extends State<OmsetScreen> {
                               const Divider(color: Colors.white24, height: 24),
                               Text(
                                 'Jumlah Transaksi/Nota: $jmlNota Nota',
-                                style: const TextStyle(color: Colors.white90, fontSize: 12),
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
                               ),
                             ],
                           ),
