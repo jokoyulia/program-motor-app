@@ -364,6 +364,8 @@ class _OrderScreenState extends State<OrderScreen> {
   List<dynamic> searchResults = [];
   bool _isSearching = false;
 
+  final _keteranganController = TextEditingController();
+
   // PERBAIKAN: tipe generik yang sebelumnya hilang ("List> cart")
   List<Map<String, dynamic>> cart = [];
   bool isEditMode = false;
@@ -396,6 +398,8 @@ class _OrderScreenState extends State<OrderScreen> {
       noOrder = data['noOrder'] ?? data['NoOrder'] ?? '';
       selectedKdCust = data['kdCust'] ?? data['KdCust'];
       selectedNmCust = data['nmCust'] ?? data['NmCust'] ?? selectedKdCust;
+      _keteranganController.text =
+          (data['keterangan'] ?? data['Keterangan'] ?? '').toString();
 
       cart.clear();
       List<dynamic> items = data['items'] ?? data['Items'] ?? [];
@@ -649,6 +653,7 @@ class _OrderScreenState extends State<OrderScreen> {
       searchResults.clear();
       _searchBarangController.clear();
     });
+    _keteranganController.clear();
     widget.onEditComplete();
     _fetchNextNoOrder();
   }
@@ -675,6 +680,7 @@ class _OrderScreenState extends State<OrderScreen> {
       "Sales": widget.kdSales,
       "KdCust": selectedKdCust,
       "Total": _totalHarga,
+      "Keterangan": _keteranganController.text.trim(),
       "Status": "BARU",
       "IsEdit": isEditMode,
       "Items": cart.map((item) {
@@ -1169,6 +1175,19 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    TextField(
+                      controller: _keteranganController,
+                      maxLength: 200,
+                      maxLines: 2,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Keterangan Order (opsional)',
+                        hintText: 'Contoh: kirim sore, titip di toko, dll.',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.notes),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     _isSaving
                         ? const Center(child: CircularProgressIndicator())
                         : SizedBox(
@@ -1288,6 +1307,8 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     double total =
         double.tryParse((order['total'] ?? order['Total'] ?? 0).toString()) ?? 0;
 
+    String ket = (order['keterangan'] ?? order['Keterangan'] ?? '').toString().trim();
+
     List<dynamic> items = order['items'] ?? order['Items'] ?? [];
 
     StringBuffer sb = StringBuffer();
@@ -1298,6 +1319,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
     sb.writeln('Tanggal   : $tgl');
     sb.writeln('Customer  : $cust');
     sb.writeln('Sales     : $sales');
+    if (ket.isNotEmpty) sb.writeln('Keterangan: $ket');
     sb.writeln('---------------------------');
     sb.writeln('DETAIL BARANG:');
 
@@ -1474,6 +1496,28 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
                                           style: const TextStyle(
                                               fontSize: 12, color: Colors.grey)),
                                       const SizedBox(height: 8),
+                                      if ((o['keterangan'] ?? o['Keterangan'] ?? '')
+                                          .toString()
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(8),
+                                          margin: const EdgeInsets.only(bottom: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.amber.shade50,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                                color: Colors.amber.shade300),
+                                          ),
+                                          child: Text(
+                                            'Keterangan: ${(o['keterangan'] ?? o['Keterangan']).toString().trim()}',
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                fontStyle: FontStyle.italic),
+                                          ),
+                                        ),
+                                      ],
                                       const Text('Detail Items:',
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
