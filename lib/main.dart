@@ -1643,7 +1643,9 @@ class OmsetScreen extends StatefulWidget {
 }
 
 class _OmsetScreenState extends State<OmsetScreen> {
-  late String selectedBulan;
+  // Periode omzet: Dari Bulan - Sampai Bulan (default: bulan berjalan)
+  late String selectedBulanAwal;
+  late String selectedBulanAkhir;
   final List<String> listBulan = [];
   bool isLoading = false;
 
@@ -1670,12 +1672,36 @@ class _OmsetScreenState extends State<OmsetScreen> {
 
   void _generateMonthList() {
     DateTime now = DateTime.now();
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 24; i++) {
       DateTime d = DateTime(now.year, now.month - i, 1);
       String monthStr = "${d.year}-${d.month.toString().padLeft(2, '0')}";
       listBulan.add(monthStr);
     }
-    selectedBulan = listBulan.first;
+    // listBulan.first = bulan berjalan
+    selectedBulanAwal = listBulan.first;
+    selectedBulanAkhir = listBulan.first;
+  }
+
+  String get _periodeLabel => selectedBulanAwal == selectedBulanAkhir
+      ? selectedBulanAwal
+      : '$selectedBulanAwal s/d $selectedBulanAkhir';
+
+  Widget _buildBulanDropdown({
+    required String value,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        border: OutlineInputBorder(),
+      ),
+      items: listBulan.map((b) {
+        return DropdownMenuItem(value: b, child: Text(b));
+      }).toList(),
+      onChanged: onChanged,
+    );
   }
 
   double _num(dynamic v) => double.tryParse((v ?? 0).toString()) ?? 0;
@@ -1710,7 +1736,7 @@ class _OmsetScreenState extends State<OmsetScreen> {
     setState(() => isLoading = true);
     try {
       String url =
-          '$baseUrl/omset-sales?sales=${Uri.encodeQueryComponent(widget.kdSales)}&bulan=$selectedBulan';
+          '$baseUrl/omset-sales?sales=${Uri.encodeQueryComponent(widget.kdSales)}&bulan=$selectedBulanAwal&bulanAkhir=$selectedBulanAkhir';
       if (selectedKelompok.isNotEmpty) {
         url += '&kelompok=${Uri.encodeQueryComponent(selectedKelompok)}';
       }
@@ -1799,7 +1825,7 @@ class _OmsetScreenState extends State<OmsetScreen> {
                       Text('Sales: ${widget.nmSales} (${widget.kdSales})',
                           style:
                               const TextStyle(fontSize: 12, color: Colors.grey)),
-                      Text('Periode: $selectedBulan',
+                      Text('Periode: $_periodeLabel',
                           style:
                               const TextStyle(fontSize: 12, color: Colors.grey)),
                       Text('Kelompok: $_namaKelompokTerpilih',
@@ -1979,26 +2005,53 @@ class _OmsetScreenState extends State<OmsetScreen> {
                             color: Color(0xFF0A192F)),
                         const SizedBox(width: 10),
                         const SizedBox(
-                          width: 70,
-                          child: Text('Bulan:',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          width: 80,
+                          child: Text('Dari Bulan:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
                         ),
                         Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedBulan,
-                            decoration: const InputDecoration(
-                              contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              border: OutlineInputBorder(),
-                            ),
-                            items: listBulan.map((b) {
-                              return DropdownMenuItem(value: b, child: Text(b));
-                            }).toList(),
+                          child: _buildBulanDropdown(
+                            value: selectedBulanAwal,
                             onChanged: (val) {
-                              if (val != null) {
-                                setState(() => selectedBulan = val);
-                                _fetchOmset();
-                              }
+                              if (val == null) return;
+                              setState(() {
+                                selectedBulanAwal = val;
+                                // Jaga agar Sampai Bulan tidak lebih kecil
+                                if (selectedBulanAkhir.compareTo(val) < 0) {
+                                  selectedBulanAkhir = val;
+                                }
+                              });
+                              _fetchOmset();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.event, color: Color(0xFF0A192F)),
+                        const SizedBox(width: 10),
+                        const SizedBox(
+                          width: 80,
+                          child: Text('Sampai:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                        Expanded(
+                          child: _buildBulanDropdown(
+                            value: selectedBulanAkhir,
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setState(() {
+                                selectedBulanAkhir = val;
+                                // Jaga agar Dari Bulan tidak lebih besar
+                                if (selectedBulanAwal.compareTo(val) > 0) {
+                                  selectedBulanAwal = val;
+                                }
+                              });
+                              _fetchOmset();
                             },
                           ),
                         ),
@@ -2010,7 +2063,7 @@ class _OmsetScreenState extends State<OmsetScreen> {
                         const Icon(Icons.category, color: Color(0xFF0A192F)),
                         const SizedBox(width: 10),
                         const SizedBox(
-                          width: 70,
+                          width: 80,
                           child: Text('Kelompok:',
                               style: TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 13)),
@@ -2096,6 +2149,12 @@ class _OmsetScreenState extends State<OmsetScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
+                                Text(
+                                  'Periode: $_periodeLabel',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12),
+                                ),
                                 Text(
                                   _namaKelompokTerpilih,
                                   textAlign: TextAlign.center,
