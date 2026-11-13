@@ -1624,7 +1624,7 @@ class _DataOrderScreenState extends State<DataOrderScreen> {
 }
 
 // ==========================================
-// 4. SCREEN OMZET SALES PER BULAN
+// 4. SCREEN OMZET SALES PER BULAN & KELOMPOK BARANG
 // ==========================================
 class OmsetScreen extends StatefulWidget {
   final String kdSales;
@@ -1647,15 +1647,24 @@ class _OmsetScreenState extends State<OmsetScreen> {
   final List<String> listBulan = [];
   bool isLoading = false;
 
+  // Filter kelompok barang ('' = SEMUA KELOMPOK)
+  List<dynamic> listKelompok = [];
+  String selectedKelompok = '';
+
   double totalJual = 0;
   double totalRetur = 0;
   double omsetNetto = 0;
   int jmlNota = 0;
 
+  // Rincian per customer
+  List<dynamic> detailJual = [];
+  List<dynamic> detailRetur = [];
+
   @override
   void initState() {
     super.initState();
     _generateMonthList();
+    _loadKelompok();
     _fetchOmset();
   }
 
@@ -1669,31 +1678,58 @@ class _OmsetScreenState extends State<OmsetScreen> {
     selectedBulan = listBulan.first;
   }
 
+  double _num(dynamic v) => double.tryParse((v ?? 0).toString()) ?? 0;
+
+  String get _namaKelompokTerpilih {
+    if (selectedKelompok.isEmpty) return 'SEMUA KELOMPOK';
+    for (var k in listKelompok) {
+      String kd = (k['kdKelompokBrg'] ?? k['KdKelompokBrg'] ?? '').toString();
+      if (kd == selectedKelompok) {
+        String nm = (k['nmKelompokBrg'] ?? k['NmKelompokBrg'] ?? '').toString();
+        return nm.isEmpty ? kd : nm;
+      }
+    }
+    return selectedKelompok;
+  }
+
+  Future<void> _loadKelompok() async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/kelompok-barang'),
+        headers: ngrokHeaders,
+      );
+      if (res.statusCode == 200 && mounted) {
+        setState(() => listKelompok = jsonDecode(res.body));
+      }
+    } catch (e) {
+      _showMsg('Gagal memuat kelompok barang: $e');
+    }
+  }
+
   Future<void> _fetchOmset() async {
     setState(() => isLoading = true);
     try {
-      final url =
-          '$baseUrl/omset-sales?sales=${widget.kdSales}&bulan=$selectedBulan';
+      String url =
+          '$baseUrl/omset-sales?sales=${Uri.encodeQueryComponent(widget.kdSales)}&bulan=$selectedBulan';
+      if (selectedKelompok.isNotEmpty) {
+        url += '&kelompok=${Uri.encodeQueryComponent(selectedKelompok)}';
+      }
       final res = await http.get(Uri.parse(url), headers: ngrokHeaders);
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (!mounted) return;
         setState(() {
-          totalJual = double.tryParse(
-                  (data['totalJual'] ?? data['TotalJual'] ?? 0).toString()) ??
-              0;
-          totalRetur = double.tryParse(
-                  (data['totalRetur'] ?? data['TotalRetur'] ?? 0).toString()) ??
-              0;
-          omsetNetto = double.tryParse((data['omsetNetto'] ??
-                      data['OmsetNetto'] ??
-                      (totalJual - totalRetur))
-                  .toString()) ??
-              0;
+          totalJual = _num(data['totalJual'] ?? data['TotalJual']);
+          totalRetur = _num(data['totalRetur'] ?? data['TotalRetur']);
+          omsetNetto = _num(
+              data['omsetNetto'] ?? data['OmsetNetto'] ?? (totalJual - totalRetur));
           jmlNota = int.tryParse(
                   (data['jmlNota'] ?? data['JmlNota'] ?? 0).toString()) ??
               0;
+          detailJual = (data['detailJual'] ?? data['DetailJual'] ?? []) as List<dynamic>;
+          detailRetur =
+              (data['detailRetur'] ?? data['DetailRetur'] ?? []) as List<dynamic>;
         });
       } else {
         _showMsg('Gagal mengambil omzet (${res.statusCode})');
@@ -1708,6 +1744,204 @@ class _OmsetScreenState extends State<OmsetScreen> {
   void _showMsg(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // Bottom sheet rincian omzet per customer
+  void _showDetail({
+    required String judul,
+    required String labelNota,
+    required List<dynamic> data,
+    required double total,
+    required Color warna,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(judul,
+                                style: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      Text('Sales: ${widget.nmSales} (${widget.kdSales})',
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text('Periode: $selectedBulan',
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text('Kelompok: $_namaKelompokTerpilih',
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: warna.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: warna),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('TOTAL (${data.length} customer)',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('Rp ${formatRibuan(total)}',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: warna)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: data.isEmpty
+                      ? ListView(
+                          controller: scrollController,
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Center(
+                                child: Text('Tidak ada data pada periode ini.',
+                                    style: TextStyle(color: Colors.grey)),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          controller: scrollController,
+                          itemCount: data.length,
+                          separatorBuilder: (c, i) => const Divider(height: 1),
+                          itemBuilder: (c, i) {
+                            final row = data[i];
+                            String kd =
+                                (row['kdCust'] ?? row['KdCust'] ?? '').toString();
+                            String nm =
+                                (row['nmCust'] ?? row['NmCust'] ?? '').toString();
+                            int nota = int.tryParse(
+                                    (row['jmlNota'] ?? row['JmlNota'] ?? 0)
+                                        .toString()) ??
+                                0;
+                            double nilai = _num(row['nilai'] ?? row['Nilai']);
+
+                            return ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                radius: 14,
+                                backgroundColor: warna,
+                                child: Text('${i + 1}',
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 11)),
+                              ),
+                              title: Text(nm.isEmpty ? kd : '$nm ($kd)',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text('$nota $labelNota'),
+                              trailing: Text('Rp ${formatRibuan(nilai)}',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold, color: warna)),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required String label,
+    required double value,
+    required IconData icon,
+    required MaterialColor warna,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 2,
+      color: warna.shade50,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: warna.shade800, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(label,
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Rp ${formatRibuan(value)}',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: warna.shade900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text('Klik untuk rincian',
+                      style: TextStyle(fontSize: 10, color: warna.shade700)),
+                  const SizedBox(width: 2),
+                  Icon(Icons.chevron_right, size: 14, color: warna.shade700),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1732,35 +1966,94 @@ class _OmsetScreenState extends State<OmsetScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // FILTER: BULAN & KELOMPOK BARANG
             Card(
               elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Row(
+                child: Column(
                   children: [
-                    const Icon(Icons.calendar_month, color: Color(0xFF0A192F)),
-                    const SizedBox(width: 10),
-                    const Text('Pilih Bulan: ',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: selectedBulan,
-                        decoration: const InputDecoration(
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          border: OutlineInputBorder(),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month,
+                            color: Color(0xFF0A192F)),
+                        const SizedBox(width: 10),
+                        const SizedBox(
+                          width: 70,
+                          child: Text('Bulan:',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
-                        items: listBulan.map((b) {
-                          return DropdownMenuItem(value: b, child: Text(b));
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => selectedBulan = val);
-                            _fetchOmset();
-                          }
-                        },
-                      ),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedBulan,
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: listBulan.map((b) {
+                              return DropdownMenuItem(value: b, child: Text(b));
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => selectedBulan = val);
+                                _fetchOmset();
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.category, color: Color(0xFF0A192F)),
+                        const SizedBox(width: 10),
+                        const SizedBox(
+                          width: 70,
+                          child: Text('Kelompok:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedKelompok,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: '',
+                                child: Text('SEMUA KELOMPOK'),
+                              ),
+                              ...listKelompok.map((k) {
+                                String kd = (k['kdKelompokBrg'] ??
+                                        k['KdKelompokBrg'] ??
+                                        '')
+                                    .toString();
+                                String nm = (k['nmKelompokBrg'] ??
+                                        k['NmKelompokBrg'] ??
+                                        '')
+                                    .toString();
+                                return DropdownMenuItem<String>(
+                                  value: kd,
+                                  child: Text(nm.isEmpty ? kd : nm,
+                                      overflow: TextOverflow.ellipsis),
+                                );
+                              }),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => selectedKelompok = val);
+                                _fetchOmset();
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1780,113 +2073,90 @@ class _OmsetScreenState extends State<OmsetScreen> {
                         color: const Color(0xFF0A192F),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              const Text(
-                                'TOTAL OMZET BERSIH (NETO)',
-                                style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Rp ${formatRibuan(omsetNetto)}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'TOTAL OMZET BERSIH (NETO)',
+                                  style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold),
                                 ),
-                              ),
-                              const Divider(color: Colors.white24, height: 24),
-                              Text(
-                                'Jumlah Transaksi/Nota: $jmlNota Nota',
-                                style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    fontSize: 12),
-                              ),
-                            ],
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Rp ${formatRibuan(omsetNetto)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _namaKelompokTerpilih,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12),
+                                ),
+                                const Divider(color: Colors.white24, height: 24),
+                                Text(
+                                  'Jumlah Transaksi/Nota: $jmlNota Nota',
+                                  style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      fontSize: 12),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // DETAIL BRUTO & RETUR
+                      // DETAIL PENJUALAN & RETUR (KLIK UNTUK RINCIAN)
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: Card(
-                              elevation: 2,
-                              color: Colors.green.shade50,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.trending_up,
-                                            color: Colors.green.shade800,
-                                            size: 20),
-                                        const SizedBox(width: 6),
-                                        const Text('Total Penjualan',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Rp ${formatRibuan(totalJual)}',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green.shade900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                            child: _buildSummaryCard(
+                              label: 'Total Penjualan',
+                              value: totalJual,
+                              icon: Icons.trending_up,
+                              warna: Colors.green,
+                              onTap: () => _showDetail(
+                                judul: 'Rincian Penjualan per Customer',
+                                labelNota: 'nota',
+                                data: detailJual,
+                                total: totalJual,
+                                warna: Colors.green.shade800,
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Card(
-                              elevation: 2,
-                              color: Colors.red.shade50,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.trending_down,
-                                            color: Colors.red.shade800,
-                                            size: 20),
-                                        const SizedBox(width: 6),
-                                        const Text('Total Retur',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Rp ${formatRibuan(totalRetur)}',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.red.shade900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                            child: _buildSummaryCard(
+                              label: 'Total Retur',
+                              value: totalRetur,
+                              icon: Icons.trending_down,
+                              warna: Colors.red,
+                              onTap: () => _showDetail(
+                                judul: 'Rincian Retur per Customer',
+                                labelNota: 'nota retur',
+                                data: detailRetur,
+                                total: totalRetur,
+                                warna: Colors.red.shade800,
                               ),
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Nilai dihitung setelah diskon (diprorata per barang), sebelum PPN.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                     ],
                   ),
